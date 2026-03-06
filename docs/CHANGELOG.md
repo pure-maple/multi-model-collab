@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.25.0 (2026-03-07)
+
+### Security Hardening (based on 3-agent parallel security audit)
+- **SSRF Protection**: Push notification URLs validated against private/reserved IP ranges, loopback, link-local, cloud metadata endpoints
+- **A2A Policy Enforcement**: A2A HTTP server now enforces the same provider policy (allowlist/blocklist/sandbox) as the MCP path — previously completely bypassed
+- **Sandbox Escalation Fix**: Codex adapter `sandbox_map` defaults to `"read-only"` for unknown values (was passthrough)
+- **CLI Flag Injection Guard**: `sanitize_extra_args()` strips values starting with `-` to prevent argument injection via model/profile params
+- **XSS Protection**: Dashboard HTML escaping via `esc()` (v0.24.0+)
+- **Path Traversal Guard**: Status file names sanitized (v0.24.0+)
+- **Subprocess Zombie Prevention**: `process.kill()` fallback after `process.terminate()` timeout
+- **Dashboard Input Validation**: All query params clamped to safe ranges (prevents negative/overflow/NaN)
+
+### Infrastructure
+- **Structured Logging**: `modelmux.log` module with `MODELMUX_LOG_LEVEL`/`MODELMUX_LOG_FORMAT` env vars
+  - Text and JSON output formats, integrated at CLI and MCP server entry points
+- **Flaky Test Fix**: Trend bucket boundary test stabilized
+
+### Stats
+- 48 new tests (30 security + 10 logging + 8 dashboard param), 361 total
+- All security findings from parallel 3-agent audit addressed
+
 ## v0.24.0 (2026-03-07)
 - **Dashboard 趋势图表**: `/api/trends` 端点返回时间序列聚合数据
   - 按小时分桶：分发量、成功率、平均延迟、累计成本

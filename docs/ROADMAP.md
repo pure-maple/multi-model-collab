@@ -75,9 +75,9 @@ codex / gemini / claude / ollama / dashscope / A2A remote / 自定义插件
 ## 近期规划 (P1)
 
 ### 质量与稳定性
-- [ ] 全量代码审查：安全审计 + 边界条件检查
-- [ ] 错误恢复增强：adapter 超时后的清理、僵尸进程检测
-- [ ] 日志系统改进：结构化日志 + 日志级别配置
+- [x] 全量代码审查：3-agent 并行安全审计（SSRF、策略绕过、sandbox 提权、flag 注入、XSS、路径遍历）
+- [x] 错误恢复增强：subprocess zombie 防护（kill 回退）、Dashboard 输入验证
+- [x] 日志系统改进：modelmux.log 模块 + MODELMUX_LOG_LEVEL/FORMAT 环境变量
 
 ### 智能路由 v3
 - [ ] 基于 benchmark 结果的自动路由权重调整
@@ -105,4 +105,4 @@ codex / gemini / claude / ollama / dashscope / A2A remote / 自定义插件
 
 ---
 
-*最后更新: 2026-03-07 (v0.24.0+, 313 tests)*
+*最后更新: 2026-03-07 (v0.25.0, 361 tests)*

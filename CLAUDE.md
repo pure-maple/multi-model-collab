@@ -88,6 +88,7 @@ Web Dashboard (modelmux dashboard --port 41521)
 | `dashboard.py` | Web dashboard (Starlette REST API + HTML UI) |
 | `benchmark.py` | Provider benchmark suite (standardized tasks + scoring) |
 | `export.py` | Export history to CSV/JSON/Markdown reports |
+| `log.py` | Centralized logging config (level + JSON format via env vars) |
 | `cli.py` | CLI entry point with subcommands |
 
 ## Dev Workflow

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.21.0 (2026-03-07)
+- **成本追踪**: TokenUsage 数据类 + parse_token_usage() 适配器方法
+- 自动从 Codex (turn.completed) 和 Gemini (usageMetadata) 提取 token 用量
+- 新增 costs.py 模块（多模型定价表 + 聚合统计）
+- mux_history(costs=True) 和 CLI --costs 参数
+- **文档全面更新**: README 中英文完全重写，反映 v0.20.0+ 全部功能
+- **仓库清理**: 移除不适合公开的原始会话日志、内部笔记（净减少 889 行）
+- **安全加固**: .gitignore 添加 .mcpregistry_*、.env、*.key、*.pem
+- 22 个新测试，总计 183 个测试通过
+
 ## v0.20.0 (2026-03-07)
 - **结构化 Release Notes**: 每个版本独立的中英双语发布说明 (`docs/releases/`)
 - **CI 自动 GitHub Release**: tag 推送后自动从 `docs/releases/{tag}.md` 创建 Release

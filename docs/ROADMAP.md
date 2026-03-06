@@ -1,6 +1,6 @@
 # modelmux 功能规划
 
-## 当前状态 (v0.20.0)
+## 当前状态 (v0.21.0)
 
 ### MCP 工具
 | 工具 | 功能 |
@@ -32,7 +32,7 @@ codex / gemini / claude / ollama / 自定义插件
 
 ---
 
-## 已完成 (v0.1.0 → v0.20.0)
+## 已完成 (v0.1.0 → v0.21.0)
 
 - [x] 初始原型：三大 CLI 适配器
 - [x] 审计日志 + 策略引擎
@@ -66,10 +66,10 @@ codex / gemini / claude / ollama / 自定义插件
 - [x] **认证机制**: Bearer token + constant-time comparison
 - [ ] **Push Notifications**: A2A 协议的异步结果通知（webhook 回调）
 
-### 成本估算
-- [ ] 按 provider 追踪 token 用量
-- [ ] 费用估算与预算告警
-- [ ] `modelmux history --costs` 查看
+### 成本追踪
+- [x] 按 provider 追踪 token 用量（Codex/Gemini 自动提取）
+- [x] 费用估算（多模型定价表 + 聚合统计）
+- [x] `mux_history(costs=True)` 和 `modelmux history --costs`
 
 ### 任务拆解
 - [ ] 复杂任务自动拆分为子任务

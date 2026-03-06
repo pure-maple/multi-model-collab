@@ -98,7 +98,7 @@ install_claude() {
     info "Claude Code: modelmux registered (user scope)"
     echo ""
     echo "  Optional: auto-approve tool calls by adding to ~/.claude/settings.json:"
-    echo '    "permissions": { "allow": ["mcp__modelmux__collab_dispatch"] }'
+    echo '    "permissions": { "allow": ["mcp__modelmux__mux_dispatch"] }'
 }
 
 install_codex() {
@@ -127,7 +127,7 @@ install_codex() {
 command = "uvx"
 args = ${uvx_args}
 required = false
-enabled_tools = ["collab_dispatch", "collab_check"]
+enabled_tools = ["mux_dispatch", "mux_check"]
 tool_timeout_sec = 600
 startup_timeout_sec = 30
 TOML
@@ -261,4 +261,4 @@ done
 echo "=== Installation complete ==="
 echo ""
 echo "Test it with:"
-echo "  collab_dispatch(provider='codex', task='hello world', workdir='.')"
+echo "  mux_dispatch(provider='codex', task='hello world', workdir='.')"

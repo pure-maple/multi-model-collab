@@ -22,8 +22,8 @@ This project lets any MCP-compatible platform orchestrate tasks across all three
 Any MCP Client (Claude Code / Codex CLI / Gemini CLI / IDE)
     │
     └── modelmux (unified MCP server)
-        ├── collab_dispatch(provider, task, ...) → Canonical Result
-        └── collab_check() → availability status
+        ├── mux_dispatch(provider, task, ...) → Canonical Result
+        └── mux_check() → availability status
             │
             ├── CodexAdapter  → codex exec --json
             ├── GeminiAdapter → gemini -p -o stream-json
@@ -83,10 +83,10 @@ args = ["modelmux"]
 
 ```
 # Check available models
-collab_check()
+mux_check()
 
 # Dispatch a task to Codex
-collab_dispatch(
+mux_dispatch(
     provider="codex",
     task="Implement a binary search tree in Python",
     workdir="/path/to/project",
@@ -94,15 +94,15 @@ collab_dispatch(
 )
 
 # Dispatch to Gemini
-collab_dispatch(
+mux_dispatch(
     provider="gemini",
     task="Design a responsive dashboard layout",
     workdir="/path/to/project"
 )
 
 # Multi-turn session
-r1 = collab_dispatch(provider="codex", task="Analyze this codebase")
-r2 = collab_dispatch(provider="codex", task="Fix the bug you found",
+r1 = mux_dispatch(provider="codex", task="Analyze this codebase")
+r2 = mux_dispatch(provider="codex", task="Fix the bug you found",
                      session_id=r1.session_id)
 ```
 
@@ -130,7 +130,7 @@ When using `provider="auto"`, the hub:
 
 ```
 # From Claude Code → auto-routes to Codex or Gemini (never back to Claude)
-collab_dispatch(provider="auto", task="Implement a REST API")
+mux_dispatch(provider="auto", task="Implement a REST API")
 ```
 
 ### User Configuration
@@ -185,7 +185,7 @@ All results follow the canonical schema:
 
 ## Audit Logging & Policy Engine
 
-Every `collab_dispatch` call is logged to `~/.config/modelmux/audit.jsonl` (JSONL format) for debugging, cost tracking, and rate limiting.
+Every `mux_dispatch` call is logged to `~/.config/modelmux/audit.jsonl` (JSONL format) for debugging, cost tracking, and rate limiting.
 
 ### Policy Enforcement
 
@@ -213,7 +213,7 @@ Create `~/.config/modelmux/policy.json` to enforce security constraints:
 
 Blocked requests return `{"status": "blocked", "error": "Policy denied: ..."}`.
 
-`collab_check()` includes policy summary and audit stats in its output.
+`mux_check()` includes policy summary and audit stats in its output.
 
 ## Project Structure
 
@@ -224,7 +224,7 @@ modelmux/
 ├── mcp/modelmux/             # Unified MCP server
 │   ├── pyproject.toml
 │   └── src/modelmux/
-│       ├── server.py           # MCP tools: collab_dispatch, collab_check
+│       ├── server.py           # MCP tools: mux_dispatch, mux_check
 │       ├── config.py           # User profiles, routing rules, config loading
 │       ├── detect.py           # Caller platform detection & auto-exclusion
 │       ├── audit.py            # JSONL audit logging & stats

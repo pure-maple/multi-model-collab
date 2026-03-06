@@ -23,11 +23,11 @@ claude mcp add modelmux -s user -- uvx modelmux
 
 ## Tools
 
-- **`collab_dispatch`** — Send a task to a model and get structured results
+- **`mux_dispatch`** — Send a task to a model and get structured results
   - `provider`: `"auto"` / `"codex"` / `"gemini"` / `"claude"`
   - `task`: The prompt to send
   - `workdir`, `sandbox`, `session_id`, `timeout`, `model`, `profile`, `reasoning_effort`
-- **`collab_check`** — Check which CLIs are available, show detected caller and config
+- **`mux_check`** — Check which CLIs are available, show detected caller and config
 
 ## Smart Routing
 
@@ -54,7 +54,7 @@ Policy enforcement via `~/.config/modelmux/policy.json`:
 }
 ```
 
-`collab_check()` now shows policy summary and audit stats.
+`mux_check()` now shows policy summary and audit stats.
 
 ## User Configuration
 

@@ -17,8 +17,8 @@ Add to `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": [
-      "mcp__modelmux__collab_dispatch",
-      "mcp__modelmux__collab_check"
+      "mcp__modelmux__mux_dispatch",
+      "mcp__modelmux__mux_check"
     ]
   }
 }
@@ -44,7 +44,7 @@ Add to `~/.codex/config.toml`:
 command = "uvx"
 args = ["--from", "/path/to/mcp/modelmux", "modelmux"]
 required = false
-enabled_tools = ["collab_dispatch", "collab_check"]
+enabled_tools = ["mux_dispatch", "mux_check"]
 tool_timeout_sec = 600
 startup_timeout_sec = 30
 ```
@@ -146,11 +146,11 @@ Add to Windsurf MCP configuration:
 ### Model CLI not found
 
 1. Check CLI is on PATH: `which codex`, `which gemini`, `which claude`
-2. Use `collab_check()` to verify availability
+2. Use `mux_check()` to verify availability
 3. If installed via npm, ensure npm global bin is in PATH
 
 ### Timeout issues
 
 - Default timeout is 300 seconds
-- Increase via `timeout` parameter: `collab_dispatch(..., timeout=600)`
+- Increase via `timeout` parameter: `mux_dispatch(..., timeout=600)`
 - Complex tasks may need longer timeouts

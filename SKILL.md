@@ -18,11 +18,11 @@ strengths for better results.
 
 ### Priority 1: MCP Tool (recommended)
 
-If the `collab_dispatch` MCP tool is available, use it directly.
+If the `mux_dispatch` MCP tool is available, use it directly.
 No tmux, no Bash permissions needed.
 
 ```
-collab_dispatch(
+mux_dispatch(
   provider="auto",            # "auto" | "codex" | "gemini" | "claude"
   task="Review this code for security issues",
   workdir="/path/to/project",
@@ -31,7 +31,7 @@ collab_dispatch(
 )
 ```
 
-Use `collab_check()` to see which model CLIs are available.
+Use `mux_check()` to see which model CLIs are available.
 
 ### Priority 2: Bash Scripts (fallback)
 
@@ -84,8 +84,8 @@ Send tasks to multiple models simultaneously, then synthesize.
 
 ```
 # Dispatch to both models in parallel
-result_codex = collab_dispatch(provider="codex", task="Implement the API endpoint")
-result_gemini = collab_dispatch(provider="gemini", task="Build the React component")
+result_codex = mux_dispatch(provider="codex", task="Implement the API endpoint")
+result_gemini = mux_dispatch(provider="gemini", task="Build the React component")
 # Then synthesize both results
 ```
 
@@ -95,9 +95,9 @@ Chain models: output of one feeds into the next.
 
 ```
 # Step 1: Codex generates code
-code = collab_dispatch(provider="codex", task="Implement binary search")
+code = mux_dispatch(provider="codex", task="Implement binary search")
 # Step 2: Gemini reviews it
-review = collab_dispatch(provider="gemini", task=f"Review this code:\n{code}")
+review = mux_dispatch(provider="gemini", task=f"Review this code:\n{code}")
 ```
 
 ### Consensus / Dual-LGTM
@@ -105,8 +105,8 @@ review = collab_dispatch(provider="gemini", task=f"Review this code:\n{code}")
 Send same task to multiple models, compare results. Both must approve.
 
 ```
-review_a = collab_dispatch(provider="codex", task=f"Review:\n{code}")
-review_b = collab_dispatch(provider="gemini", task=f"Review:\n{code}")
+review_a = mux_dispatch(provider="codex", task=f"Review:\n{code}")
+review_b = mux_dispatch(provider="gemini", task=f"Review:\n{code}")
 # Compare and merge findings
 ```
 
@@ -115,9 +115,9 @@ review_b = collab_dispatch(provider="gemini", task=f"Review:\n{code}")
 Pass `session_id` from a previous result to continue the conversation:
 
 ```
-r1 = collab_dispatch(provider="codex", task="Analyze this codebase")
+r1 = mux_dispatch(provider="codex", task="Analyze this codebase")
 # Continue the same session
-r2 = collab_dispatch(provider="codex", task="Now fix the bug you found",
+r2 = mux_dispatch(provider="codex", task="Now fix the bug you found",
                      session_id=r1.session_id)
 ```
 
@@ -147,7 +147,7 @@ All results follow the canonical schema:
 
 ## Error Handling
 
-- If a model CLI is not installed, `collab_check()` will show it as unavailable
+- If a model CLI is not installed, `mux_check()` will show it as unavailable
 - If a task times out, the result status will be "timeout" with partial output
 - If a model returns an error, the result will include the error message
 - Always report which models were used and their results to the user

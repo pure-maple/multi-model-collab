@@ -4,36 +4,36 @@
     {
       "id": 1,
       "prompt": "我有一个 Python 的 FastAPI 项目在 /tmp/test-api 目录下，帮我用 Codex 和 Gemini 分别审查 main.py 里的安全问题，然后综合两个模型的意见给我一份报告",
-      "expected_output": "Claude 通过 collab_dispatch MCP tool 并行发送审查任务给 codex 和 gemini，收集两份报告，综合去重后给出统一安全审查报告。应识别出 SQL 注入、命令注入、路径遍历、硬编码密钥等问题。",
-      "expected_tools": ["collab_dispatch"],
+      "expected_output": "Claude 通过 mux_dispatch MCP tool 并行发送审查任务给 codex 和 gemini，收集两份报告，综合去重后给出统一安全审查报告。应识别出 SQL 注入、命令注入、路径遍历、硬编码密钥等问题。",
+      "expected_tools": ["mux_dispatch"],
       "files": ["/tmp/test-api/main.py"]
     },
     {
       "id": 2,
       "prompt": "帮我设计一个 TODO 应用的 API，然后让 Codex 实现后端，Gemini 写前端组件，最后整合起来",
-      "expected_output": "Claude 先设计 API spec，然后通过 collab_dispatch 路由：codex 实现后端代码 → gemini 写前端组件 → Claude 检查接口一致性并整合。体现模型路由策略：后端→Codex，前端→Gemini。",
-      "expected_tools": ["collab_dispatch"],
+      "expected_output": "Claude 先设计 API spec，然后通过 mux_dispatch 路由：codex 实现后端代码 → gemini 写前端组件 → Claude 检查接口一致性并整合。体现模型路由策略：后端→Codex，前端→Gemini。",
+      "expected_tools": ["mux_dispatch"],
       "files": []
     },
     {
       "id": 3,
       "prompt": "这个排序算法的实现对不对？帮我问问其他 AI 的意见。代码在 /tmp/test-sort/sort.py 里",
-      "expected_output": "Claude 通过 collab_dispatch 将代码发给至少一个外部模型获取 second opinion。外部模型应识别 merge 函数中缺少 result.extend(right[j:]) 的 bug。Claude 综合分析后报告。",
-      "expected_tools": ["collab_dispatch"],
+      "expected_output": "Claude 通过 mux_dispatch 将代码发给至少一个外部模型获取 second opinion。外部模型应识别 merge 函数中缺少 result.extend(right[j:]) 的 bug。Claude 综合分析后报告。",
+      "expected_tools": ["mux_dispatch"],
       "files": ["/tmp/test-sort/sort.py"]
     },
     {
       "id": 4,
-      "prompt": "用 collab_check 看看我系统上装了哪些 AI 模型 CLI",
-      "expected_output": "Claude 调用 collab_check MCP tool，返回 codex/gemini/claude 的可用状态。",
-      "expected_tools": ["collab_check"],
+      "prompt": "用 mux_check 看看我系统上装了哪些 AI 模型 CLI",
+      "expected_output": "Claude 调用 mux_check MCP tool，返回 codex/gemini/claude 的可用状态。",
+      "expected_tools": ["mux_check"],
       "files": []
     },
     {
       "id": 5,
       "prompt": "帮我跟 Codex 讨论一下这个 Python 项目的架构应该怎么设计，多聊几轮",
-      "expected_output": "Claude 通过 collab_dispatch 与 Codex 进行多轮对话，使用 session_id 保持会话连续性。至少进行 2 轮交互。",
-      "expected_tools": ["collab_dispatch"],
+      "expected_output": "Claude 通过 mux_dispatch 与 Codex 进行多轮对话，使用 session_id 保持会话连续性。至少进行 2 轮交互。",
+      "expected_tools": ["mux_dispatch"],
       "files": []
     }
   ]

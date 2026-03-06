@@ -23,6 +23,22 @@ from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
 
+def _clamp_int(raw: str, default: int, lo: int = 1, hi: int = 10000) -> int:
+    """Parse and clamp an integer query param to [lo, hi]."""
+    try:
+        return max(lo, min(hi, int(raw)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _clamp_float(raw: str, default: float, lo: float = 0.0, hi: float = 8760.0) -> float:
+    """Parse and clamp a float query param to [lo, hi]."""
+    try:
+        return max(lo, min(hi, float(raw)))
+    except (ValueError, TypeError):
+        return default
+
+
 async def api_status(request: Request) -> JSONResponse:
     """GET /api/status — list active dispatches."""
     from modelmux.status import list_active
@@ -37,9 +53,9 @@ async def api_history(request: Request) -> JSONResponse:
     """GET /api/history — query dispatch history."""
     from modelmux.history import HistoryQuery, read_history
 
-    limit = int(request.query_params.get("limit", "20"))
+    limit = _clamp_int(request.query_params.get("limit", "20"), 20)
     provider = request.query_params.get("provider", "")
-    hours = float(request.query_params.get("hours", "0"))
+    hours = _clamp_float(request.query_params.get("hours", "0"), 0.0)
     status = request.query_params.get("status", "")
 
     entries = read_history(
@@ -52,7 +68,7 @@ async def api_stats(request: Request) -> JSONResponse:
     """GET /api/stats — aggregated statistics."""
     from modelmux.history import get_history_stats
 
-    hours = float(request.query_params.get("hours", "0"))
+    hours = _clamp_float(request.query_params.get("hours", "0"), 0.0)
     stats = get_history_stats(hours=hours, include_costs=True)
     return JSONResponse(stats)
 
@@ -104,8 +120,8 @@ async def api_trends(request: Request) -> JSONResponse:
     """GET /api/trends — time-series data for charts."""
     from modelmux.history import get_trends
 
-    hours = float(request.query_params.get("hours", "24"))
-    bucket_minutes = int(request.query_params.get("bucket", "60"))
+    hours = _clamp_float(request.query_params.get("hours", "24"), 24.0, lo=0.1)
+    bucket_minutes = _clamp_int(request.query_params.get("bucket", "60"), 60, lo=1, hi=1440)
     trends = get_trends(hours=hours, bucket_minutes=bucket_minutes)
     return JSONResponse(trends)
 
@@ -114,8 +130,8 @@ async def api_collaborations(request: Request) -> JSONResponse:
     """GET /api/collaborations — collaboration history with turn details."""
     from modelmux.history import HistoryQuery, read_history
 
-    limit = int(request.query_params.get("limit", "10"))
-    hours = float(request.query_params.get("hours", "0"))
+    limit = _clamp_int(request.query_params.get("limit", "10"), 10)
+    hours = _clamp_float(request.query_params.get("hours", "0"), 0.0)
 
     entries = read_history(
         HistoryQuery(limit=limit, source="collaborate", hours=hours)
@@ -144,7 +160,7 @@ async def api_costs(request: Request) -> JSONResponse:
     from modelmux.costs import PRICING
     from modelmux.history import get_history_stats
 
-    hours = float(request.query_params.get("hours", "0"))
+    hours = _clamp_float(request.query_params.get("hours", "0"), 0.0)
     stats = get_history_stats(hours=hours, include_costs=True)
     costs = stats.get("costs", {})
     return JSONResponse({"costs": costs, "pricing": PRICING})

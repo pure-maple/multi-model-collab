@@ -280,6 +280,48 @@ class TestApiCollaborations:
         assert captured["limit"] == 3
 
 
+class TestParamClamping:
+    def test_clamp_int_normal(self):
+        from modelmux.dashboard import _clamp_int
+
+        assert _clamp_int("50", 20) == 50
+
+    def test_clamp_int_negative(self):
+        from modelmux.dashboard import _clamp_int
+
+        assert _clamp_int("-1", 20) == 1
+
+    def test_clamp_int_overflow(self):
+        from modelmux.dashboard import _clamp_int
+
+        assert _clamp_int("999999", 20) == 10000
+
+    def test_clamp_int_invalid(self):
+        from modelmux.dashboard import _clamp_int
+
+        assert _clamp_int("abc", 20) == 20
+
+    def test_clamp_float_normal(self):
+        from modelmux.dashboard import _clamp_float
+
+        assert _clamp_float("12.5", 0.0) == 12.5
+
+    def test_clamp_float_negative(self):
+        from modelmux.dashboard import _clamp_float
+
+        assert _clamp_float("-5", 0.0) == 0.0
+
+    def test_clamp_float_overflow(self):
+        from modelmux.dashboard import _clamp_float
+
+        assert _clamp_float("99999", 24.0) == 8760.0
+
+    def test_clamp_float_invalid(self):
+        from modelmux.dashboard import _clamp_float
+
+        assert _clamp_float("nan-value", 24.0) == 24.0
+
+
 class TestCreateApp:
     def test_app_has_all_routes(self):
         app = create_app()

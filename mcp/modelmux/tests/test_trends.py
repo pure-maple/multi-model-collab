@@ -77,11 +77,12 @@ class TestGetTrendsWithData:
 
     def test_multiple_entries_same_bucket(self, history_dir):
         now = time.time()
-        base = now - 300
+        # Place all entries close together (10s apart) to guarantee same bucket
+        base = now - 30
         entries = [
             {"ts": base, "provider": "codex", "status": "success", "duration_seconds": 10},
-            {"ts": base + 60, "provider": "gemini", "status": "success", "duration_seconds": 20},
-            {"ts": base + 120, "provider": "codex", "status": "error", "duration_seconds": 5},
+            {"ts": base + 10, "provider": "gemini", "status": "success", "duration_seconds": 20},
+            {"ts": base + 20, "provider": "codex", "status": "error", "duration_seconds": 5},
         ]
         path = _write_history(history_dir, entries)
         with patch("modelmux.history._history_file", return_value=path):

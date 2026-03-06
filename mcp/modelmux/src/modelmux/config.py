@@ -63,6 +63,13 @@ class ProviderConfig:
                 val = os.environ.get(self.api_key_env, "")
                 if val:
                     env["GEMINI_API_KEY"] = val
+        elif provider == "dashscope":
+            if self.base_url:
+                env["DASHSCOPE_BASE_URL"] = self.base_url
+            if self.api_key_env:
+                val = os.environ.get(self.api_key_env, "")
+                if val:
+                    env["DASHSCOPE_CODING_API_KEY"] = val
 
         env.update(self.extra_env)
         return env

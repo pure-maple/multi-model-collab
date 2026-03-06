@@ -41,6 +41,14 @@ _ROUTE_PATTERNS: dict[str, list[re.Pattern]] = {
             re.I,
         ),
     ],
+    "dashscope": [
+        re.compile(
+            r"\b(qwen|tongyi|通义|千问|kimi|glm|智谱|minimax|"
+            r"chinese|中文|翻译|translate.+chinese|"
+            r"dashscope|阿里|alibaba)\b",
+            re.I,
+        ),
+    ],
 }
 
 # Weight for combining keyword vs history scores

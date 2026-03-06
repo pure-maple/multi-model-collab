@@ -199,8 +199,11 @@ async def mux_dispatch(
             and user config, auto-excludes the calling platform), "codex"
             (code generation, algorithms, debugging), "gemini" (frontend,
             design, multimodal), "claude" (architecture, reasoning, review),
-            or "ollama" (local models via Ollama — use model param to
-            specify which, e.g. "deepseek-r1", "llama3.2", "qwen2.5").
+            "ollama" (local models via Ollama — use model param to
+            specify which, e.g. "deepseek-r1", "llama3.2", "qwen2.5"),
+            or "dashscope" (Alibaba Cloud Coding Plan models — use model
+            param to specify which, e.g. "qwen3.5-plus", "kimi-k2.5",
+            "glm-5", "MiniMax-M2.5", "qwen3-coder-plus").
         task: The task description / prompt to send to the model.
         workdir: Working directory for the model to operate in.
         sandbox: Security level — "read-only" (default, safe), "write"
@@ -468,13 +471,18 @@ async def mux_broadcast(
     active_prof = config.profiles.get(profile_name)
 
     # Determine which providers to broadcast to
+    all_known = get_all_adapters()
     if providers:
-        target_providers = [p for p in providers if p in ADAPTERS]
+        target_providers = [p for p in providers if p in all_known]
     else:
         target_providers = [
             name
-            for name in ADAPTERS
-            if name not in excluded and _get_adapter(name).check_available()
+            for name, a in all_known.items()
+            if name not in excluded
+            and (
+                (isinstance(a, BaseAdapter) and a.check_available())
+                or (not isinstance(a, BaseAdapter) and a().check_available())
+            )
         ]
 
     if not target_providers:

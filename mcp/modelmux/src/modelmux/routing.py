@@ -13,10 +13,45 @@ Task classification maps incoming prompts to benchmark categories
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+# ── TTL cache for file-backed data ──
+# Avoids re-reading history.jsonl / benchmark.json / feedback.jsonl
+# on every smart_route() call. Cache entries expire after TTL seconds.
+
+_CACHE_TTL = 60  # seconds
+
+_cache: dict[str, tuple[float, Any]] = {}
+
+
+def _get_cached(key: str) -> Any | None:
+    """Return cached value if still valid, else None."""
+    entry = _cache.get(key)
+    if entry is None:
+        return None
+    ts, value = entry
+    if time.time() - ts > _CACHE_TTL:
+        del _cache[key]
+        return None
+    return value
+
+
+def _set_cached(key: str, value: Any) -> None:
+    """Store value in cache with current timestamp."""
+    _cache[key] = (time.time(), value)
+
+
+def invalidate_routing_cache() -> None:
+    """Clear routing caches. Call after dispatches or feedback."""
+    _cache.clear()
 
 # Keyword patterns (same as server.py, extracted here for reuse)
 _ROUTE_PATTERNS: dict[str, list[re.Pattern]] = {
@@ -140,7 +175,13 @@ def _read_history_stats(hours: float = HISTORY_WINDOW_HOURS) -> dict[str, dict]:
 
     Returns {provider: {calls, success, total_duration}} without
     importing history module (avoids circular deps).
+    Results are cached for _CACHE_TTL seconds.
     """
+    cache_key = f"history_stats_{hours}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     path = Path.home() / ".config" / "modelmux" / "history.jsonl"
     if not path.exists():
         return {}
@@ -184,6 +225,7 @@ def _read_history_stats(hours: float = HISTORY_WINDOW_HOURS) -> dict[str, dict]:
     except OSError:
         return {}
 
+    _set_cached(cache_key, providers)
     return providers
 
 
@@ -259,17 +301,24 @@ def benchmark_scores(
     If a category is specified, uses only results from that category.
     Returns {provider: quality_score} where quality_score is 0.0–1.0.
     Providers with no benchmark data get 0.5 (neutral).
+    Results are cached for _CACHE_TTL seconds.
     """
     path = benchmark_path or _BENCHMARK_FILE
-    if not path.exists():
-        return {p: 0.5 for p in providers}
 
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {p: 0.5 for p in providers}
+    # Cache raw benchmark results (file read is expensive, aggregation is cheap)
+    cache_key = f"benchmark_raw_{path}"
+    results = _get_cached(cache_key)
+    if results is None:
+        if not path.exists():
+            return {p: 0.5 for p in providers}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {p: 0.5 for p in providers}
+        results = data.get("results", [])
+        if results:
+            _set_cached(cache_key, results)
 
-    results = data.get("results", [])
     if not results:
         return {p: 0.5 for p in providers}
 

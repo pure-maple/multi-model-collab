@@ -40,6 +40,13 @@ def log_result(result_dict: dict, task: str = "", source: str = "dispatch") -> N
 
         # Auto-rotate: cap at ~10MB
         _maybe_rotate(path)
+
+        # Invalidate routing cache so next route sees new history
+        try:
+            from modelmux.routing import invalidate_routing_cache
+            invalidate_routing_cache()
+        except ImportError:
+            pass
     except OSError:
         logger.debug("Failed to write history entry", exc_info=True)
 

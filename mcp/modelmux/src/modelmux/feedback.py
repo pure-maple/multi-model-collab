@@ -50,6 +50,13 @@ def log_feedback(
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+    # Invalidate routing cache so next route sees new feedback
+    try:
+        from modelmux.routing import invalidate_routing_cache
+        invalidate_routing_cache()
+    except ImportError:
+        pass
+
 
 def read_feedback(
     hours: float = 0,
@@ -96,8 +103,15 @@ def feedback_scores(
     Returns {provider: score} where score is 0.0-1.0.
     Score is normalized average rating (rating/5).
     Providers with no feedback get 0.5 (neutral).
+    Uses routing cache for read_feedback to avoid repeated disk I/O.
     """
-    entries = read_feedback(hours=hours)
+    from modelmux.routing import _get_cached, _set_cached
+
+    cache_key = f"feedback_entries_{hours}"
+    entries = _get_cached(cache_key)
+    if entries is None:
+        entries = read_feedback(hours=hours)
+        _set_cached(cache_key, entries)
 
     # Aggregate ratings per provider
     totals: dict[str, list[int]] = {p: [] for p in providers}

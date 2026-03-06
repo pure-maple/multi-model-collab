@@ -9,6 +9,16 @@ from unittest.mock import patch
 
 import pytest
 
+from modelmux.routing import invalidate_routing_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_routing_cache():
+    """Clear routing cache before each test to avoid cross-test contamination."""
+    invalidate_routing_cache()
+    yield
+    invalidate_routing_cache()
+
 
 class TestLogFeedback:
     """Test feedback persistence."""

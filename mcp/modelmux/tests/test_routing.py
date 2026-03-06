@@ -1,4 +1,4 @@
-"""Tests for smart routing v3 (keyword + history + benchmark scoring)."""
+"""Tests for smart routing v4 (keyword + history + benchmark + feedback scoring)."""
 
 import json
 import tempfile
@@ -8,8 +8,12 @@ from unittest import mock
 
 from modelmux.routing import (
     ProviderScore,
+    _cache,
+    _get_cached,
+    _set_cached,
     benchmark_scores,
     classify_task,
+    invalidate_routing_cache,
     keyword_scores,
     history_scores,
     smart_route,
@@ -314,3 +318,88 @@ def test_smart_route_task_category_in_scores():
         )
         for score in scores.values():
             assert score.task_category == "generation"
+
+
+# --- Routing cache tests ---
+
+
+def setup_function():
+    """Clear cache before each test."""
+    _cache.clear()
+
+
+def test_cache_set_and_get():
+    """Cache should store and retrieve values."""
+    _set_cached("test_key", {"data": 42})
+    result = _get_cached("test_key")
+    assert result == {"data": 42}
+
+
+def test_cache_expiry():
+    """Expired entries should return None."""
+    _set_cached("test_key", "value")
+    # Manually expire the entry
+    ts, val = _cache["test_key"]
+    _cache["test_key"] = (ts - 120, val)  # 120s ago
+    assert _get_cached("test_key") is None
+
+
+def test_cache_miss():
+    """Non-existent keys should return None."""
+    assert _get_cached("nonexistent") is None
+
+
+def test_invalidate_routing_cache():
+    """invalidate_routing_cache should clear all entries."""
+    _set_cached("a", 1)
+    _set_cached("b", 2)
+    assert len(_cache) == 2
+    invalidate_routing_cache()
+    assert len(_cache) == 0
+
+
+def test_history_stats_cache():
+    """_read_history_stats should use cache on second call."""
+    _cache.clear()
+    mock_stats = {
+        "codex": {"calls": 5, "success": 4, "total_duration": 25.0},
+    }
+    # Pre-populate cache — second call should skip file I/O
+    _set_cached("history_stats_72", mock_stats)
+    from modelmux.routing import _read_history_stats
+    result = _read_history_stats(hours=72)
+    assert result == mock_stats
+
+
+def test_benchmark_cache_avoids_reread():
+    """benchmark_scores should cache raw file data."""
+    _cache.clear()
+    data = {
+        "results": [
+            {"provider": "codex", "category": "analysis",
+             "status": "success", "keyword_hits": 4, "keyword_total": 4},
+        ],
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False,
+    ) as f:
+        json.dump(data, f)
+        f.flush()
+        path = Path(f.name)
+
+    try:
+        # First call reads file
+        scores1 = benchmark_scores(["codex"], benchmark_path=path)
+        assert scores1["codex"] > 0.5
+
+        # Verify cache is populated
+        cache_key = f"benchmark_raw_{path}"
+        assert _get_cached(cache_key) is not None
+
+        # Delete the file — second call should use cache
+        path.unlink()
+        scores2 = benchmark_scores(["codex"], benchmark_path=path)
+        assert scores2["codex"] == scores1["codex"]
+    finally:
+        if path.exists():
+            path.unlink()

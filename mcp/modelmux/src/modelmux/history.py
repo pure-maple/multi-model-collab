@@ -40,6 +40,14 @@ def log_result(result_dict: dict, task: str = "", source: str = "dispatch") -> N
     except OSError:
         pass
 
+    # Webhook notification (non-blocking, fire-and-forget)
+    try:
+        from modelmux.notifications import notify_dispatch
+
+        notify_dispatch(result_dict, task=task, source=source)
+    except Exception:
+        pass  # Never let notification failure affect core flow
+
 
 def _maybe_rotate(path: Path, max_bytes: int = 10 * 1024 * 1024) -> None:
     """Rotate history file if it exceeds max_bytes."""

@@ -1232,26 +1232,46 @@ async def mux_check(ctx: Context, diagnose: str = "") -> str:
 
         diag_candidates = [p for p in available_providers if p not in excluded]
         if diag_candidates:
+            # Check routing rules first (same as _auto_route)
+            rule_match = ""
+            if config.routing_rules:
+                rule_result = route_by_rules(
+                    diagnose, config.routing_rules, config.default_provider,
+                )
+                if rule_result and rule_result not in excluded:
+                    rule_match = rule_result
+
             best, scores = smart_route(
                 diagnose, available_providers, excluded=list(excluded),
             )
             category = classify_task(diagnose)
+
+            # If routing rules matched, that overrides smart_route
+            if rule_match:
+                best = rule_match
+
             breakdown = {}
             for prov, ps in scores.items():
                 breakdown[prov] = {
                     "keyword": round(ps.keyword_score, 3),
-                    "history": round(ps.success_rate * 0.7 + ps.latency_score * 0.3, 3),
+                    "history": round(
+                        ps.success_rate * 0.7 + ps.latency_score * 0.3,
+                        3,
+                    ),
                     "benchmark": round(ps.benchmark_score, 3),
                     "feedback": round(ps.feedback_score, 3),
                     "composite": round(ps.composite, 3),
                     "history_calls": ps.history_calls,
                 }
-            status["_diagnose"] = {
+            diag_result: dict = {
                 "prompt": diagnose[:200],
                 "category": category,
                 "best_provider": best,
                 "scores": breakdown,
             }
+            if rule_match:
+                diag_result["routing_rule_match"] = rule_match
+            status["_diagnose"] = diag_result
         else:
             status["_diagnose"] = {
                 "prompt": diagnose[:200],

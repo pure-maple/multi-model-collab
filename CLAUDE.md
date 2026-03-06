@@ -55,7 +55,8 @@ Web Dashboard (modelmux dashboard --port 41521)
   ├── GET  /api/history     → dispatch history
   ├── GET  /api/stats       → aggregated statistics
   ├── GET  /api/providers   → provider availability
-  └── GET  /api/costs       → cost breakdown
+  ├── GET  /api/costs       → cost breakdown
+  └── GET  /api/feedback    → user feedback scores
 ```
 
 ## Key Files

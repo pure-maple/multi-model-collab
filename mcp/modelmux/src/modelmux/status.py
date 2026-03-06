@@ -35,12 +35,22 @@ class DispatchStatus:
     failover_from: str = ""
 
 
+def _safe_filename(run_id: str) -> str:
+    """Ensure run_id is safe for use as a filename (no path traversal)."""
+    import re
+
+    return re.sub(r"[^a-zA-Z0-9_-]", "", run_id)[:32]
+
+
 def write_status(status: DispatchStatus) -> None:
     """Write or update a dispatch status file."""
     try:
         d = _status_dir()
         d.mkdir(parents=True, exist_ok=True)
-        path = d / f"{status.run_id}.json"
+        safe_id = _safe_filename(status.run_id)
+        if not safe_id:
+            return
+        path = d / f"{safe_id}.json"
         path.write_text(
             json.dumps(asdict(status), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -52,7 +62,10 @@ def write_status(status: DispatchStatus) -> None:
 def remove_status(run_id: str) -> None:
     """Remove a completed dispatch status file."""
     try:
-        path = _status_dir() / f"{run_id}.json"
+        safe_id = _safe_filename(run_id)
+        if not safe_id:
+            return
+        path = _status_dir() / f"{safe_id}.json"
         path.unlink(missing_ok=True)
     except OSError:
         pass

@@ -260,6 +260,7 @@ td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 async function fetchJSON(url) {
   try { const r = await fetch(url); return await r.json(); }
@@ -280,7 +281,7 @@ async function refreshActive() {
   const now = Date.now()/1000;
   d.active.forEach(s => {
     const elapsed = (now - s.started_at).toFixed(1);
-    h += `<tr><td>${s.provider}</td><td>${elapsed}s</td><td>${(s.task_summary||'').slice(0,60)}</td></tr>`;
+    h += `<tr><td>${esc(s.provider)}</td><td>${elapsed}s</td><td>${esc((s.task_summary||'').slice(0,60))}</td></tr>`;
   });
   h += '</table>';
   $('active').innerHTML = h;
@@ -293,7 +294,7 @@ async function refreshProviders() {
   for (const [name, info] of Object.entries(d.providers)) {
     const b = badge(info.available);
     const tag = info.custom ? ' <span style="color:var(--text-dim);font-size:0.75rem">(custom)</span>' : '';
-    h += `<div class="stat"><span class="stat-label">${name}${tag}</span><span>${b}</span></div>`;
+    h += `<div class="stat"><span class="stat-label">${esc(name)}${tag}</span><span>${b}</span></div>`;
   }
   $('providers').innerHTML = h || '<p style="color:var(--text-dim)">No providers</p>';
 }
@@ -303,7 +304,7 @@ async function refreshStats() {
   if (!d || !d.total) { $('stats').innerHTML = '<p style="color:var(--text-dim)">No data</p>'; return; }
   let h = `<div class="stat"><span class="stat-label">Total dispatches</span><span class="stat-value">${d.total}</span></div>`;
   for (const [prov, ps] of Object.entries(d.by_provider || {})) {
-    h += `<div class="stat"><span class="stat-label">${prov}</span>`;
+    h += `<div class="stat"><span class="stat-label">${esc(prov)}</span>`;
     h += `<span>${ps.calls} calls, ${ps.success_rate}% ok, avg ${ps.avg_duration}s</span></div>`;
   }
   $('stats').innerHTML = h;
@@ -318,7 +319,7 @@ async function refreshCosts() {
   let h = `<div class="stat"><span class="stat-label">Total cost</span><span class="stat-value">$${c.total_cost_usd.toFixed(4)}</span></div>`;
   h += `<div class="stat"><span class="stat-label">Tokens</span><span>${c.total_input_tokens.toLocaleString()} in / ${c.total_output_tokens.toLocaleString()} out</span></div>`;
   for (const [prov, pd] of Object.entries(c.by_provider || {})) {
-    h += `<div class="stat"><span class="stat-label">${prov}</span><span>${pd.calls} calls, $${pd.total_cost.toFixed(4)}</span></div>`;
+    h += `<div class="stat"><span class="stat-label">${esc(prov)}</span><span>${pd.calls} calls, $${pd.total_cost.toFixed(4)}</span></div>`;
   }
   $('costs').innerHTML = h;
 }
@@ -331,9 +332,9 @@ async function refreshHistory() {
     const t = e.ts ? new Date(e.ts*1000).toLocaleTimeString() : '?';
     const icon = e.status === 'success' ? '&#x2713;' : '&#x2717;';
     const cls = e.status === 'success' ? 'color:var(--green)' : 'color:var(--red)';
-    h += `<tr><td>${t}</td><td>${e.provider||'?'}</td>`;
+    h += `<tr><td>${t}</td><td>${esc(e.provider||'?')}</td>`;
     h += `<td style="${cls}">${icon}</td><td>${(e.duration_seconds||0).toFixed(1)}s</td>`;
-    h += `<td>${(e.task||'').slice(0,60)}</td></tr>`;
+    h += `<td>${esc((e.task||'').slice(0,60))}</td></tr>`;
   });
   h += '</table>';
   $('history').innerHTML = h;
@@ -369,14 +370,14 @@ async function refreshCollabs() {
     const t = c.ts ? new Date(c.ts*1000).toLocaleString() : '?';
     const stCls = c.state === 'completed' ? 'color:var(--green)' : c.state === 'failed' ? 'color:var(--red)' : 'color:var(--yellow)';
     h += `<div class="collab-item">`;
-    h += `<div class="collab-header"><span><span class="collab-pattern">${c.pattern}</span> — ${c.task.slice(0,80)}</span>`;
-    h += `<span class="collab-state" style="${stCls}">${c.state} (${c.rounds} rounds, ${c.duration_seconds}s)</span></div>`;
-    h += `<div style="font-size:0.75rem;color:var(--text-dim)">Providers: ${(c.providers_used||[]).join(', ')} | ${t}</div>`;
+    h += `<div class="collab-header"><span><span class="collab-pattern">${esc(c.pattern)}</span> — ${esc(c.task.slice(0,80))}</span>`;
+    h += `<span class="collab-state" style="${stCls}">${esc(c.state)} (${c.rounds} rounds, ${c.duration_seconds}s)</span></div>`;
+    h += `<div style="font-size:0.75rem;color:var(--text-dim)">Providers: ${esc((c.providers_used||[]).join(', '))} | ${t}</div>`;
     if (c.turns && c.turns.length) {
       h += '<div class="timeline">';
       c.turns.forEach(turn => {
         const cls = turn.status === 'success' ? 'success' : turn.status === 'timeout' ? 'timeout' : 'error';
-        h += `<div class="turn-bar ${cls}" title="${turn.role} (${turn.provider}) ${turn.duration}s\n${(turn.output_summary||'').slice(0,80)}">${turn.role}</div>`;
+        h += `<div class="turn-bar ${cls}" title="${esc(turn.role)} (${esc(turn.provider)}) ${turn.duration}s\n${esc((turn.output_summary||'').slice(0,80))}">${esc(turn.role)}</div>`;
       });
       h += '</div>';
     }

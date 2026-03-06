@@ -7,6 +7,7 @@ third-party model configuration and custom routing rules.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -32,10 +33,10 @@ mcp = FastMCP(
     "modelmux",
     instructions=(
         "modelmux — model multiplexer. Use mux_dispatch to send "
-        "tasks to different AI models (codex, gemini, claude) and receive "
-        "structured results. Use provider='auto' for smart routing. "
-        "Supports profiles for third-party model configuration and "
-        "session continuity for multi-turn conversations."
+        "a task to one AI model, or mux_broadcast to send the same "
+        "task to multiple models in parallel for consensus/comparison. "
+        "Use provider='auto' for smart routing. "
+        "Supports profiles, session continuity, and failover."
     ),
 )
 
@@ -398,6 +399,153 @@ async def mux_dispatch(
     )
 
     return json.dumps(result_dict, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+async def mux_broadcast(
+    task: str,
+    ctx: Context,
+    providers: list[str] | None = None,
+    workdir: str = ".",
+    sandbox: Literal["read-only", "write", "full"] = "read-only",
+    timeout: int = 300,
+    model: str = "",
+    profile: str = "",
+) -> str:
+    """Broadcast a task to multiple AI models in parallel and return all results.
+
+    Use this for consensus reviews, multi-perspective analysis, or A/B
+    comparisons. All providers run concurrently — much faster than
+    sequential mux_dispatch calls.
+
+    Args:
+        task: The task description / prompt to send to all models.
+        providers: List of providers to use, e.g. ["codex", "gemini"].
+            If omitted or empty, auto-selects all available providers
+            (excluding the caller platform).
+        workdir: Working directory for the models to operate in.
+        sandbox: Security level — "read-only" (default), "write", "full".
+        timeout: Maximum seconds to wait per provider (default 300).
+        model: Override model version for all providers.
+        profile: Named profile from user config.
+    """
+    resolved_workdir = str(Path(workdir).resolve())
+    config = load_config(resolved_workdir)
+    caller, excluded = _detect_and_build_exclusions(ctx, config)
+
+    profile_name = profile or config.active_profile
+    active_prof = config.profiles.get(profile_name)
+
+    # Determine which providers to broadcast to
+    if providers:
+        target_providers = [p for p in providers if p in ADAPTERS]
+    else:
+        target_providers = [
+            name
+            for name in ADAPTERS
+            if name not in excluded and _get_adapter(name).check_available()
+        ]
+
+    if not target_providers:
+        return json.dumps(
+            {"status": "error", "error": "No available providers to broadcast to."},
+            indent=2,
+        )
+
+    # Policy check (use first provider as representative)
+    policy = load_policy()
+    policy_result = check_policy(
+        policy,
+        provider=target_providers[0],
+        sandbox=sandbox,
+        timeout=timeout,
+        calls_last_hour=count_recent(1.0),
+        calls_last_day=count_recent(24.0),
+    )
+    if not policy_result.allowed:
+        return json.dumps(
+            {"status": "blocked", "error": f"Policy denied: {policy_result.reason}"},
+            indent=2,
+        )
+
+    await ctx.info(
+        f"Broadcasting to {len(target_providers)} providers: "
+        f"{', '.join(target_providers)}..."
+    )
+
+    async def _run_one(provider_name: str) -> dict:
+        adapter = _get_adapter(provider_name)
+        if not adapter.check_available():
+            return {
+                "provider": provider_name,
+                "status": "error",
+                "error": f"{provider_name} CLI not available",
+            }
+
+        run_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        status_obj = DispatchStatus(
+            run_id=run_id,
+            provider=provider_name,
+            task_summary=task[:200],
+            status="running",
+            started_at=start_time,
+        )
+        write_status(status_obj)
+
+        extra_args, env_overrides = _build_extra_args(
+            provider_name, model, profile, "", active_prof
+        )
+
+        result = await adapter.run(
+            prompt=task,
+            workdir=resolved_workdir,
+            sandbox=sandbox,
+            session_id="",
+            timeout=timeout,
+            extra_args=extra_args if extra_args else None,
+            env_overrides=env_overrides if env_overrides else None,
+        )
+
+        remove_status(run_id)
+
+        # Audit
+        log_dispatch(
+            AuditEntry(
+                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                provider=provider_name,
+                task_summary=task[:200],
+                status=result.status,
+                duration_seconds=result.duration_seconds,
+                caller=caller.client_name,
+                caller_platform=caller.platform,
+                routed_from="broadcast",
+                profile=profile_name if profile_name != "default" else "",
+                sandbox=sandbox,
+                model=extra_args.get("model", ""),
+                session_id=result.session_id,
+                error=result.error,
+            )
+        )
+
+        return result.to_dict()
+
+    results = await asyncio.gather(*[_run_one(p) for p in target_providers])
+
+    return json.dumps(
+        {
+            "broadcast": True,
+            "providers": target_providers,
+            "results": list(results),
+            "summary": {
+                "total": len(results),
+                "success": sum(1 for r in results if r["status"] == "success"),
+                "error": sum(1 for r in results if r["status"] != "success"),
+            },
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool()

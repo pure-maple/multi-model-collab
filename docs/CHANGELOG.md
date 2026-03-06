@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.26.0 (2026-03-07)
+
+### User Feedback Loop (routing v4)
+- **New `mux_feedback` tool**: Rate dispatch results 1-5 to improve routing quality
+  - Auto-detects provider and task category from dispatch history
+  - Supports `list_recent=True` to view recent feedback
+- **Routing v4**: Four-signal composite scoring
+  - Keyword patterns (35%) + dispatch history (25%) + benchmark quality (20%) + user feedback (20%)
+  - Adaptive weight degradation when data sources unavailable
+  - `mux_check` now shows v4 routing diagnostics with feedback data status
+- **Feedback persistence**: `~/.config/modelmux/feedback.jsonl`
+
+### Bug Fixes (from DashScope cross-review)
+- **Engine convergence fix** (P0): `_execute_round` sequential mode now returns turns instead of `[]`, enabling `convergence.evaluate()` to run correctly. Removed double `ctx.update_after_turn` call.
+- **Generator return value fix** (P0): `BaseAdapter.run()` uses `while/next` loop instead of `for` to correctly capture `stream_subprocess` exit code via `StopIteration.value`
+- **History metadata fix** (P1): `log_result` now places metadata (`ts`/`source`/`task`) after `**result_dict` to prevent override
+- **Audit timezone fix** (P1): `read_recent` treats naive ISO timestamps as UTC to match `time.time()` cutoff
+
+### Stats
+- 25 new tests (14 feedback + 11 bugfix), 413 total
+- New file: `feedback.py` (user rating collection + per-provider scoring)
+
 ## v0.25.1 (2026-03-07)
 
 ### Security Hardening (Phase 2)

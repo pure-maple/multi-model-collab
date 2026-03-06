@@ -41,7 +41,7 @@ def log_result(result_dict: dict, task: str = "", source: str = "dispatch") -> N
         # Auto-rotate: cap at ~10MB
         _maybe_rotate(path)
     except OSError:
-        pass
+        logger.debug("Failed to write history entry", exc_info=True)
 
     # Webhook notification (non-blocking, fire-and-forget)
     try:

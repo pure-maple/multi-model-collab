@@ -10,9 +10,12 @@ and policy enforcement (rate limiting reads from this log).
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _audit_dir() -> Path:
@@ -51,7 +54,7 @@ def log_dispatch(entry: AuditEntry) -> None:
         with open(_audit_file(), "a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(entry), ensure_ascii=False) + "\n")
     except OSError:
-        pass  # Never let audit logging break dispatch
+        logger.debug("Failed to write audit entry", exc_info=True)
 
 
 def read_recent(hours: float = 1.0) -> list[AuditEntry]:

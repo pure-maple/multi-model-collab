@@ -40,6 +40,7 @@ jobs:
         run: |
           uv run python tests/test_detect.py
           uv run python tests/test_audit_policy.py
+          uv run python tests/test_failover.py
 
       - name: Import verification
         run: |

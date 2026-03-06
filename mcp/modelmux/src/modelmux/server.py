@@ -125,6 +125,46 @@ def _detect_and_build_exclusions(
     return caller, excluded
 
 
+def _build_extra_args(
+    actual_provider: str,
+    model: str,
+    profile: str,
+    reasoning_effort: str,
+    active_prof: object | None,
+) -> tuple[dict, dict[str, str]]:
+    """Build extra_args and env_overrides from profile + explicit params."""
+    extra_args: dict = {}
+    env_overrides: dict[str, str] = {}
+
+    if active_prof:
+        provider_conf = active_prof.providers.get(actual_provider)
+        if provider_conf:
+            if provider_conf.model and not model:
+                extra_args["model"] = provider_conf.model
+            if provider_conf.wire_api:
+                extra_args["wire_api"] = provider_conf.wire_api
+            env_overrides = provider_conf.to_env_overrides(actual_provider)
+
+    if model:
+        extra_args["model"] = model
+    if profile and actual_provider == "codex":
+        extra_args["profile"] = profile
+    if reasoning_effort:
+        extra_args["reasoning_effort"] = reasoning_effort
+
+    return extra_args, env_overrides
+
+
+def _get_fallback_candidates(
+    current: str,
+    excluded: list[str],
+    priority: list[str] | None = None,
+) -> list[str]:
+    """Return available provider names to try as fallback, in order."""
+    order = priority or ["codex", "gemini", "claude"]
+    return [p for p in order if p != current and p not in excluded]
+
+
 @mcp.tool()
 async def mux_dispatch(
     provider: Literal["auto", "codex", "gemini", "claude"],
@@ -137,6 +177,7 @@ async def mux_dispatch(
     model: str = "",
     profile: str = "",
     reasoning_effort: str = "",
+    failover: bool = True,
 ) -> str:
     """Dispatch a task to an AI model CLI and return the result.
 
@@ -160,6 +201,9 @@ async def mux_dispatch(
             model/provider/base_url to use for each CLI.
         reasoning_effort: Codex reasoning effort level — "low", "medium",
             "high", "xhigh". Only applies to provider="codex".
+        failover: Auto-retry with another provider on execution error
+            (default True). Disabled when session_id is set (sessions
+            are provider-specific).
     """
     # Load user configuration
     resolved_workdir = str(Path(workdir).resolve())
@@ -176,12 +220,10 @@ async def mux_dispatch(
     actual_provider = provider
     if provider == "auto":
         actual_provider = _auto_route(task, config)
-        # Skip excluded providers (disabled + auto-excluded caller)
         if actual_provider in excluded:
-            for alt in ["codex", "gemini", "claude"]:
-                if alt != actual_provider and alt not in excluded:
-                    actual_provider = alt
-                    break
+            for alt in _get_fallback_candidates(actual_provider, excluded):
+                actual_provider = alt
+                break
 
     # Warn if explicitly dispatching to self
     if provider != "auto" and provider in excluded and caller.provider == provider:
@@ -213,60 +255,47 @@ async def mux_dispatch(
 
     adapter = _get_adapter(actual_provider)
 
+    # Check binary availability with fallback
     if not adapter.check_available():
-        if provider == "auto":
-            for fallback in ["codex", "gemini", "claude"]:
-                if fallback != actual_provider and fallback not in excluded:
-                    fb_adapter = _get_adapter(fallback)
-                    if fb_adapter.check_available():
-                        actual_provider = fallback
-                        adapter = fb_adapter
-                        break
-            else:
-                return json.dumps(
-                    {
-                        "run_id": "",
-                        "provider": actual_provider,
-                        "status": "error",
-                        "error": "No model CLIs available on PATH.",
-                    },
-                    indent=2,
+        candidates = _get_fallback_candidates(actual_provider, excluded)
+        found = False
+        for fb_name in candidates:
+            fb_adapter = _get_adapter(fb_name)
+            if fb_adapter.check_available():
+                await ctx.info(
+                    f"{actual_provider} CLI not found, falling back to {fb_name}"
                 )
-        else:
+                actual_provider = fb_name
+                adapter = fb_adapter
+                found = True
+                break
+        if not found:
             return json.dumps(
                 {
                     "run_id": "",
                     "provider": actual_provider,
                     "status": "error",
                     "error": (
-                        f"{actual_provider} CLI is not installed or not on PATH. "
-                        f"Please install it first."
+                        f"{actual_provider} CLI is not installed or not on PATH."
+                        if provider != "auto"
+                        else "No model CLIs available on PATH."
                     ),
                 },
                 indent=2,
             )
 
-    # Build extra_args from explicit params + profile
-    extra_args: dict = {}
-    env_overrides: dict[str, str] = {}
+    # Build extra_args
+    extra_args, env_overrides = _build_extra_args(
+        actual_provider, model, profile, reasoning_effort, active_prof
+    )
 
-    # Apply profile settings
-    if active_prof:
-        provider_conf = active_prof.providers.get(actual_provider)
-        if provider_conf:
-            if provider_conf.model and not model:
-                extra_args["model"] = provider_conf.model
-            if provider_conf.wire_api:
-                extra_args["wire_api"] = provider_conf.wire_api
-            env_overrides = provider_conf.to_env_overrides(actual_provider)
+    # Progress callback via MCP context
+    progress_messages: list[str] = []
 
-    # Explicit params override profile
-    if model:
-        extra_args["model"] = model
-    if profile and actual_provider == "codex":
-        extra_args["profile"] = profile
-    if reasoning_effort:
-        extra_args["reasoning_effort"] = reasoning_effort
+    def on_progress(msg: str) -> None:
+        progress_messages.append(msg)
+
+    await ctx.info(f"Dispatching to {actual_provider}...")
 
     result = await adapter.run(
         prompt=task,
@@ -276,13 +305,52 @@ async def mux_dispatch(
         timeout=timeout,
         extra_args=extra_args if extra_args else None,
         env_overrides=env_overrides if env_overrides else None,
+        on_progress=on_progress,
     )
+
+    # Execution failover: if the primary provider errored, try alternatives.
+    # Skip failover for: timeouts (already waited), sessions (provider-specific),
+    # or when failover is disabled.
+    failover_from = ""
+    can_failover = failover and result.status == "error" and not session_id
+    if can_failover:
+        candidates = _get_fallback_candidates(actual_provider, excluded)
+        for fb_name in candidates:
+            fb_adapter = _get_adapter(fb_name)
+            if not fb_adapter.check_available():
+                continue
+
+            await ctx.info(
+                f"{actual_provider} failed ({result.error}), retrying with {fb_name}..."
+            )
+            failover_from = actual_provider
+
+            fb_extra, fb_env = _build_extra_args(
+                fb_name, model, profile, reasoning_effort, active_prof
+            )
+            fb_result = await fb_adapter.run(
+                prompt=task,
+                workdir=resolved_workdir,
+                sandbox=sandbox,
+                session_id="",
+                timeout=timeout,
+                extra_args=fb_extra if fb_extra else None,
+                env_overrides=fb_env if fb_env else None,
+                on_progress=on_progress,
+            )
+            if fb_result.status != "error":
+                actual_provider = fb_name
+                adapter = fb_adapter
+                result = fb_result
+                break
 
     result_dict = result.to_dict()
     if provider == "auto":
         result_dict["routed_from"] = "auto"
         if caller.provider:
             result_dict["caller_excluded"] = caller.provider
+    if failover_from:
+        result_dict["failover_from"] = failover_from
     if profile_name != "default" and active_prof:
         result_dict["profile"] = profile_name
 

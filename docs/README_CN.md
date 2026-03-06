@@ -284,6 +284,21 @@ cp SKILL.md .gemini/skills/modelmux/SKILL.md
 
 `mux_check()` 的输出现已包含策略摘要和审计统计信息。
 
+## 自动容错 (Failover)
+
+当 provider 执行失败时，modelmux 自动尝试下一个可用 provider：
+
+```
+mux_dispatch(provider="codex", task="...", failover=True)  # 默认开启
+# 如果 codex CLI 崩溃 → 自动重试 gemini 或 claude
+# 结果中包含 "failover_from": "codex" 说明发生了什么
+```
+
+以下情况不会触发 failover：
+- `session_id` 已设置（会话是 provider 专属的）
+- `failover=False`（手动禁用）
+- 超时（已经等待了足够久）
+
 ## 输出格式
 
 所有结果遵循统一的标准化格式：

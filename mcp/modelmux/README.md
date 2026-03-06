@@ -26,7 +26,7 @@ claude mcp add modelmux -s user -- uvx modelmux
 - **`mux_dispatch`** — Send a task to a model and get structured results
   - `provider`: `"auto"` / `"codex"` / `"gemini"` / `"claude"`
   - `task`: The prompt to send
-  - `workdir`, `sandbox`, `session_id`, `timeout`, `model`, `profile`, `reasoning_effort`
+  - `workdir`, `sandbox`, `session_id`, `timeout`, `model`, `profile`, `reasoning_effort`, `failover`
 - **`mux_check`** — Check which CLIs are available, show detected caller and config
 
 ## Smart Routing
@@ -37,6 +37,10 @@ claude mcp add modelmux -s user -- uvx modelmux
 From Claude Code → routes to Codex or Gemini (never back to Claude)
 From Codex CLI → routes to Claude or Gemini (never back to Codex)
 ```
+
+## Failover
+
+When a provider fails at execution time, modelmux automatically retries with the next available provider (enabled by default, `failover=True`). Failover is skipped for session-based requests since sessions are provider-specific.
 
 ## Audit & Policy
 

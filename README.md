@@ -165,6 +165,18 @@ model = "gpt-4.1-mini"
 model = "gemini-2.0-flash"
 ```
 
+## Failover
+
+When a provider fails at execution time, modelmux automatically retries with the next available provider:
+
+```
+mux_dispatch(provider="codex", task="...", failover=True)  # default
+# If codex CLI crashes → auto-retry with gemini or claude
+# Result includes "failover_from": "codex" to show what happened
+```
+
+Failover is skipped for session-based requests (`session_id` set) since sessions are provider-specific. Disable with `failover=False`.
+
 ## Output Schema
 
 All results follow the canonical schema:

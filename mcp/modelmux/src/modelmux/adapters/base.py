@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Thread
 from typing import Generator
@@ -165,8 +166,14 @@ class BaseAdapter:
         timeout: int = 300,
         extra_args: dict | None = None,
         env_overrides: dict[str, str] | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> AdapterResult:
-        """Execute a task and return the canonical result."""
+        """Execute a task and return the canonical result.
+
+        Args:
+            on_progress: Optional callback invoked with status messages
+                during execution (e.g., for MCP progress notifications).
+        """
         run_id = str(uuid.uuid4())[:8]
         start = time.monotonic()
 
@@ -187,6 +194,9 @@ class BaseAdapter:
                 status="error",
                 error=f"Failed to build command: {e}",
             )
+
+        if on_progress:
+            on_progress(f"Running {self.provider_name} CLI...")
 
         lines: list[str] = []
         exit_code = 0

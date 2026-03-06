@@ -9,6 +9,7 @@ Architecture: One hub, multiple internal adapters.
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -17,12 +18,14 @@ from typing import Literal
 from mcp.server.fastmcp import Context, FastMCP
 
 from collab_hub.adapters import ADAPTERS, BaseAdapter
+from collab_hub.audit import AuditEntry, count_recent, get_audit_stats, log_dispatch
 from collab_hub.config import (
     CollabConfig,
     load_config,
     route_by_rules,
 )
 from collab_hub.detect import CallerInfo, detect_caller, get_excluded_providers
+from collab_hub.policy import check_policy, load_policy
 
 mcp = FastMCP(
     "collab-hub",
@@ -189,6 +192,27 @@ async def collab_dispatch(
             f"This may cause a self-dispatch loop."
         )
 
+    # Policy check
+    policy = load_policy()
+    policy_result = check_policy(
+        policy,
+        provider=actual_provider,
+        sandbox=sandbox,
+        timeout=timeout,
+        calls_last_hour=count_recent(1.0),
+        calls_last_day=count_recent(24.0),
+    )
+    if not policy_result.allowed:
+        return json.dumps(
+            {
+                "run_id": "",
+                "provider": actual_provider,
+                "status": "blocked",
+                "error": f"Policy denied: {policy_result.reason}",
+            },
+            indent=2,
+        )
+
     adapter = _get_adapter(actual_provider)
 
     if not adapter.check_available():
@@ -263,6 +287,26 @@ async def collab_dispatch(
             result_dict["caller_excluded"] = caller.provider
     if profile_name != "default" and active_prof:
         result_dict["profile"] = profile_name
+
+    # Audit logging
+    log_dispatch(
+        AuditEntry(
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            provider=actual_provider,
+            task_summary=task[:200],
+            status=result.status,
+            duration_seconds=result.duration_seconds,
+            caller=caller.client_name,
+            caller_platform=caller.platform,
+            routed_from="auto" if provider == "auto" else "",
+            profile=profile_name if profile_name != "default" else "",
+            sandbox=sandbox,
+            model=extra_args.get("model", ""),
+            session_id=result.session_id,
+            error=result.error,
+        )
+    )
+
     return json.dumps(result_dict, indent=2, ensure_ascii=False)
 
 
@@ -301,5 +345,19 @@ async def collab_check(ctx: Context) -> str:
         "auto_exclude_caller": config.auto_exclude_caller,
         "caller_override": config.caller_override,
     }
+
+    # Policy summary
+    policy = load_policy()
+    status["_policy"] = {
+        "allowed_providers": policy.allowed_providers or ["all"],
+        "blocked_providers": policy.blocked_providers,
+        "blocked_sandboxes": policy.blocked_sandboxes,
+        "max_timeout": policy.max_timeout or "unlimited",
+        "max_calls_per_hour": policy.max_calls_per_hour or "unlimited",
+        "max_calls_per_day": policy.max_calls_per_day or "unlimited",
+    }
+
+    # Audit summary
+    status["_audit"] = get_audit_stats()
 
     return json.dumps(status, indent=2)

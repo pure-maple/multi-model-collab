@@ -36,8 +36,10 @@ jobs:
           uv run ruff check src/
           uv run ruff format --check src/
 
-      - name: Unit tests (detect)
-        run: uv run python tests/test_detect.py
+      - name: Unit tests
+        run: |
+          uv run python tests/test_detect.py
+          uv run python tests/test_audit_policy.py
 
       - name: Import verification
         run: |

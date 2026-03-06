@@ -61,9 +61,9 @@ codex / gemini / claude / ollama / 自定义插件
 
 ### A2A 协议增强
 - [ ] **A2A 客户端**: 作为 A2A 客户端连接外部 A2A agent（不只是服务端）
-- [ ] **端到端集成测试**: httpx 客户端 → A2A server → 协作引擎 → 完整链路验证
-- [ ] **任务持久化**: 重启后恢复未完成的协作任务（持久化到 JSONL）
-- [ ] **认证机制**: Bearer token / API key，保护生产环境
+- [x] **端到端集成测试**: httpx AsyncClient → A2A server → 协作引擎 → 完整链路验证（10 tests）
+- [x] **任务持久化**: 重启后恢复已完成任务（JSONL 持久化 + `--no-persist` CLI 选项）
+- [x] **认证机制**: Bearer token + constant-time comparison
 - [ ] **Push Notifications**: A2A 协议的异步结果通知（webhook 回调）
 
 ### 成本估算
@@ -107,4 +107,4 @@ codex / gemini / claude / ollama / 自定义插件
 
 ---
 
-*最后更新: 2026-03-06 (v0.19.0)*
+*最后更新: 2026-03-07 (v0.19.0)*

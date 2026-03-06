@@ -4,20 +4,19 @@ Model multiplexer — unified MCP server for cross-platform multi-model AI colla
 
 ## Cross-Agent Collaboration
 
-本项目与 clawmux 项目通过共享文档协调开发：
+本项目与 clawmux 通过共享文档协调：
 
-- **`../AGENTS.md`** — 跨 agent 协调中心（状态同步、接口约定、优先级对齐）
-- **`../shared/`** — 详细技术文档和集成指南
+- **`../shared/modelmux-clawmux.md`** — 接口约定、状态同步、联动优先级
+- **`../shared/modelmux-a2a-integration-guide.md`** — A2A 集成指南（面向 clawmux）
 
-**重要**: 接口变更时必须同步更新 `../AGENTS.md` 和 `../shared/` 下相关文档。
-完成重要里程碑时，在 `../AGENTS.md` 的变更日志中记录。
+**重要**: 接口变更时同步更新 `../shared/modelmux-clawmux.md`。
 
 ## Quick Reference
 
 - **Package**: `mcp/modelmux/` (pyproject.toml, src/modelmux/)
 - **Install**: `uvx modelmux` or `claude mcp add modelmux -s user -- uvx modelmux`
 - **Python**: Use `uv`, not system python. Requires 3.10+
-- **Tests**: `cd mcp/modelmux && uv run --with pytest python -m pytest tests/ --ignore=tests/test_e2e.py`
+- **Tests**: `cd mcp/modelmux && uv run --with pytest --with pytest-asyncio python -m pytest tests/ --ignore=tests/test_e2e.py`
 - **Lint**: `uv run ruff check src/ && uv run ruff format src/`
 - **Build**: `uv build`
 - **CI**: GitHub Actions (matrix 3.10-3.12 x ubuntu/macos), auto-publish on tag
@@ -44,7 +43,7 @@ A2A HTTP Server (modelmux a2a-server)
   │   ├── tasks/get           → query task state
   │   ├── tasks/cancel        → cancel running task
   │   └── tasks/sendSubscribe → SSE streaming
-  └── TaskStore (in-memory task management)
+  └── TaskStore (in-memory + JSONL persistence)
 ```
 
 ## Key Files

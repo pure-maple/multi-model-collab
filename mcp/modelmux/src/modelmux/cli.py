@@ -233,6 +233,15 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
         print("  Auth: disabled (open access)")
     print()
 
+    # Task persistence
+    persist_path = ""
+    if not getattr(args, "no_persist", False):
+        from pathlib import Path
+
+        cfg_dir = Path.home() / ".config" / "modelmux"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        persist_path = str(cfg_dir / "a2a-tasks.jsonl")
+
     server = A2AServer(
         get_adapter=get_adapter,
         host=host,
@@ -240,6 +249,7 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
         workdir=workdir,
         sandbox=sandbox,
         auth_token=token,
+        persist_path=persist_path,
     )
     server.run()
 
@@ -274,6 +284,11 @@ def main() -> None:
         "--token",
         default="",
         help="Bearer token for authentication (or set MODELMUX_A2A_TOKEN env var)",
+    )
+    a2a_p.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable task persistence (in-memory only)",
     )
 
     # modelmux init

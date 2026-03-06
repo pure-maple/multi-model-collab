@@ -68,11 +68,23 @@ class TaskEntry:
 
 
 class TaskStore:
-    """Thread-safe in-memory task store."""
+    """In-memory task store with optional JSONL persistence.
 
-    def __init__(self, max_tasks: int = 1000) -> None:
+    Completed/failed/canceled tasks are persisted to a JSONL file
+    so they survive server restarts. Running tasks are not persisted
+    (their async state cannot be serialized).
+    """
+
+    def __init__(
+        self,
+        max_tasks: int = 1000,
+        persist_path: str = "",
+    ) -> None:
         self._tasks: dict[str, TaskEntry] = {}
         self._max_tasks = max_tasks
+        self._persist_path = persist_path
+        if persist_path:
+            self._load_from_disk()
 
     def create(self, task_id: str = "") -> TaskEntry:
         task_id = task_id or f"task-{uuid.uuid4().hex[:12]}"
@@ -95,19 +107,71 @@ class TaskStore:
                 if hasattr(entry, k):
                     setattr(entry, k, v)
             entry.updated_at = time.time()
+            if entry.state in _TERMINAL_STATES:
+                self._persist_entry(entry)
         return entry
 
     def _evict_old(self) -> None:
         if len(self._tasks) <= self._max_tasks:
             return
-        # Remove oldest completed tasks
         completed = sorted(
-            ((tid, e) for tid, e in self._tasks.items() if e.state in _TERMINAL_STATES),
+            (
+                (tid, e)
+                for tid, e in self._tasks.items()
+                if e.state in _TERMINAL_STATES
+            ),
             key=lambda x: x[1].updated_at,
         )
         while len(self._tasks) > self._max_tasks and completed:
             tid, _ = completed.pop(0)
             del self._tasks[tid]
+
+    def _persist_entry(self, entry: TaskEntry) -> None:
+        """Append a terminal task entry to the JSONL file."""
+        if not self._persist_path:
+            return
+        try:
+            record = {
+                "task_id": entry.task_id,
+                "context_id": entry.context_id,
+                "state": entry.state,
+                "created_at": entry.created_at,
+                "updated_at": entry.updated_at,
+                "result": entry.result,
+            }
+            with open(self._persist_path, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        except OSError:
+            logger.warning("Failed to persist task %s", entry.task_id)
+
+    def _load_from_disk(self) -> None:
+        """Load completed tasks from JSONL on startup."""
+        import pathlib
+
+        path = pathlib.Path(self._persist_path)
+        if not path.exists():
+            return
+        try:
+            for line in path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                tid = record["task_id"]
+                if tid in self._tasks:
+                    continue
+                self._tasks[tid] = TaskEntry(
+                    task_id=tid,
+                    context_id=record.get("context_id", ""),
+                    state=record.get("state", "completed"),
+                    result=record.get("result"),
+                    created_at=record.get("created_at", 0),
+                    updated_at=record.get("updated_at", 0),
+                )
+            logger.info(
+                "Loaded %d tasks from %s", len(self._tasks), path
+            )
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Failed to load tasks from %s", path)
 
 
 _TERMINAL_STATES = {"completed", "failed", "canceled", "rejected"}
@@ -129,6 +193,7 @@ class A2AServer:
         workdir: str = ".",
         sandbox: str = "read-only",
         auth_token: str = "",
+        persist_path: str = "",
     ) -> None:
         self._get_adapter = get_adapter
         self.host = host
@@ -136,7 +201,7 @@ class A2AServer:
         self.workdir = workdir
         self.sandbox = sandbox
         self.auth_token = auth_token or os.environ.get("MODELMUX_A2A_TOKEN", "")
-        self.store = TaskStore()
+        self.store = TaskStore(persist_path=persist_path)
         self._agent_card: dict[str, Any] | None = None
 
     def build_agent_card(self) -> dict[str, Any]:

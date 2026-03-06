@@ -650,3 +650,162 @@ def test_agent_card_no_auth_schemes_when_disabled():
     client = _make_client()  # no token
     card = client.get("/.well-known/agent.json").json()
     assert "authSchemes" not in card
+
+
+# --- TaskStore Persistence Tests ---
+
+
+def test_task_store_persist_on_terminal_state(tmp_path):
+    """Completed tasks should be appended to JSONL file."""
+    import json
+
+    persist_file = tmp_path / "tasks.jsonl"
+    store = TaskStore(persist_path=str(persist_file))
+    entry = store.create(task_id="persist-1")
+    result = {"status": {"state": "completed"}}
+    store.update("persist-1", state="completed", result=result)
+
+    assert persist_file.exists()
+    lines = persist_file.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["task_id"] == "persist-1"
+    assert record["state"] == "completed"
+    assert record["result"] == {"status": {"state": "completed"}}
+    assert record["context_id"] == entry.context_id
+
+
+def test_task_store_persist_multiple_terminal_states(tmp_path):
+    """Multiple terminal tasks should each be persisted."""
+    import json
+
+    persist_file = tmp_path / "tasks.jsonl"
+    store = TaskStore(persist_path=str(persist_file))
+    for i, state in enumerate(["completed", "failed", "canceled"]):
+        store.create(task_id=f"multi-{i}")
+        store.update(f"multi-{i}", state=state)
+
+    lines = persist_file.read_text().strip().splitlines()
+    assert len(lines) == 3
+    states = [json.loads(line)["state"] for line in lines]
+    assert states == ["completed", "failed", "canceled"]
+
+
+def test_task_store_no_persist_for_working_state(tmp_path):
+    """Non-terminal states should not trigger persistence."""
+    persist_file = tmp_path / "tasks.jsonl"
+    store = TaskStore(persist_path=str(persist_file))
+    store.create(task_id="working-1")
+    store.update("working-1", state="working")
+
+    assert not persist_file.exists()
+
+
+def test_task_store_no_persist_without_path():
+    """No file operations when persist_path is empty."""
+    store = TaskStore(persist_path="")
+    entry = store.create(task_id="no-persist-1")
+    store.update("no-persist-1", state="completed")
+    # Should not raise — just silently skip persistence
+    assert entry.state == "completed"
+
+
+def test_task_store_load_from_disk(tmp_path):
+    """Tasks persisted to JSONL should be loaded on startup."""
+    import json
+
+    persist_file = tmp_path / "tasks.jsonl"
+    records = [
+        {
+            "task_id": "loaded-1",
+            "context_id": "ctx-abc",
+            "state": "completed",
+            "created_at": 1000.0,
+            "updated_at": 1001.0,
+            "result": {"id": "loaded-1", "status": {"state": "completed"}},
+        },
+        {
+            "task_id": "loaded-2",
+            "context_id": "ctx-def",
+            "state": "failed",
+            "created_at": 2000.0,
+            "updated_at": 2001.0,
+            "result": None,
+        },
+    ]
+    persist_file.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+    store = TaskStore(persist_path=str(persist_file))
+    assert store.get("loaded-1") is not None
+    assert store.get("loaded-1").context_id == "ctx-abc"
+    assert store.get("loaded-1").state == "completed"
+    expected = {"id": "loaded-1", "status": {"state": "completed"}}
+    assert store.get("loaded-1").result == expected
+
+    assert store.get("loaded-2") is not None
+    assert store.get("loaded-2").state == "failed"
+
+
+def test_task_store_load_skips_duplicates(tmp_path):
+    """In-memory tasks should not be overwritten by disk data."""
+    import json
+
+    persist_file = tmp_path / "tasks.jsonl"
+    persist_file.write_text(
+        json.dumps(
+            {
+                "task_id": "dup-1",
+                "context_id": "ctx-old",
+                "state": "completed",
+                "created_at": 0,
+                "updated_at": 0,
+                "result": None,
+            }
+        )
+        + "\n"
+    )
+
+    store = TaskStore(persist_path=str(persist_file))
+    assert store.get("dup-1") is not None
+    assert store.get("dup-1").context_id == "ctx-old"
+
+    # Loading again should not create duplicates
+    store._load_from_disk()
+    assert store.get("dup-1").context_id == "ctx-old"
+
+
+def test_task_store_load_handles_missing_file(tmp_path):
+    """Missing persistence file should not cause errors."""
+    persist_file = tmp_path / "nonexistent.jsonl"
+    store = TaskStore(persist_path=str(persist_file))
+    assert store.get("anything") is None
+
+
+def test_task_store_load_handles_corrupt_file(tmp_path):
+    """Corrupt JSONL should not crash — gracefully skip."""
+    persist_file = tmp_path / "corrupt.jsonl"
+    persist_file.write_text("not valid json\n{also bad\n")
+
+    store = TaskStore(persist_path=str(persist_file))
+    # Should not raise, just log warning
+    assert len(store._tasks) == 0
+
+
+def test_task_store_load_skips_blank_lines(tmp_path):
+    """Blank lines in JSONL should be silently skipped."""
+    import json
+
+    persist_file = tmp_path / "blanks.jsonl"
+    content = (
+        json.dumps({"task_id": "blank-1", "context_id": "c", "state": "completed",
+                     "created_at": 0, "updated_at": 0, "result": None})
+        + "\n\n\n"
+        + json.dumps({"task_id": "blank-2", "context_id": "d", "state": "failed",
+                     "created_at": 0, "updated_at": 0, "result": None})
+        + "\n"
+    )
+    persist_file.write_text(content)
+
+    store = TaskStore(persist_path=str(persist_file))
+    assert store.get("blank-1") is not None
+    assert store.get("blank-2") is not None

@@ -95,6 +95,8 @@ async def collab_dispatch(
     session_id: str = "",
     timeout: int = 300,
     model: str = "",
+    profile: str = "",
+    reasoning_effort: str = "",
 ) -> str:
     """Dispatch a task to an AI model CLI and return the result.
 
@@ -110,7 +112,13 @@ async def collab_dispatch(
         session_id: Resume a previous session for multi-turn conversation.
             Pass the session_id from a previous result to continue.
         timeout: Maximum seconds to wait (default 300).
-        model: Override the specific model version (optional).
+        model: Override the specific model version (e.g., "gpt-5.4",
+            "gemini-2.5-pro", "claude-sonnet-4-6"). If empty, uses
+            the CLI's default model from its own config.
+        profile: Codex config profile name from ~/.codex/config.toml
+            (e.g., "fast", "deep"). Only applies to provider="codex".
+        reasoning_effort: Codex reasoning effort level — "low", "medium",
+            "high", "xhigh". Only applies to provider="codex".
     """
     # Auto-route if needed
     actual_provider = provider
@@ -153,6 +161,10 @@ async def collab_dispatch(
     extra_args: dict = {}
     if model:
         extra_args["model"] = model
+    if profile:
+        extra_args["profile"] = profile
+    if reasoning_effort:
+        extra_args["reasoning_effort"] = reasoning_effort
 
     result = await adapter.run(
         prompt=task,

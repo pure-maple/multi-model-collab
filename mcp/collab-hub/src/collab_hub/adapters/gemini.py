@@ -35,6 +35,8 @@ class GeminiAdapter(BaseAdapter):
         if extra_args:
             if extra_args.get("model"):
                 cmd.extend(["--model", extra_args["model"]])
+            if extra_args.get("approval_mode"):
+                cmd.extend(["--approval-mode", extra_args["approval_mode"]])
 
         if session_id:
             cmd.extend(["--resume", session_id])

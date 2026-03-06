@@ -110,6 +110,125 @@ def read_history(query: HistoryQuery | None = None) -> list[dict]:
     return entries[-q.limit :][::-1]
 
 
+def get_trends(hours: float = 24, bucket_minutes: int = 60) -> dict:
+    """Aggregate history into time-series buckets.
+
+    Returns data suitable for charting: dispatch count, success rate,
+    avg latency, and cumulative cost per time bucket.
+    """
+    path = _history_file()
+    if not path.exists():
+        return {"buckets": [], "hours": hours, "bucket_minutes": bucket_minutes}
+
+    now = time.time()
+    cutoff = now - (hours * 3600)
+    bucket_secs = bucket_minutes * 60
+
+    # Read all matching entries
+    raw: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                ts = data.get("ts", 0)
+                if ts >= cutoff:
+                    raw.append(data)
+    except OSError:
+        return {"buckets": [], "hours": hours, "bucket_minutes": bucket_minutes}
+
+    if not raw:
+        return {"buckets": [], "hours": hours, "bucket_minutes": bucket_minutes}
+
+    # Build buckets from cutoff to now
+    bucket_start = cutoff - (cutoff % bucket_secs)
+    buckets_map: dict[float, dict] = {}
+    t = bucket_start
+    while t <= now:
+        buckets_map[t] = {
+            "ts": t,
+            "count": 0,
+            "success": 0,
+            "error": 0,
+            "total_duration": 0.0,
+            "cost": 0.0,
+            "by_provider": {},
+        }
+        t += bucket_secs
+
+    # Fill buckets
+    for entry in raw:
+        ts = entry.get("ts", 0)
+        bk = ts - (ts % bucket_secs)
+        if bk not in buckets_map:
+            continue
+        b = buckets_map[bk]
+        b["count"] += 1
+        if entry.get("status") == "success":
+            b["success"] += 1
+        else:
+            b["error"] += 1
+        b["total_duration"] += entry.get("duration_seconds", 0)
+
+        prov = entry.get("provider", "unknown")
+        b["by_provider"][prov] = b["by_provider"].get(prov, 0) + 1
+
+        # Cost from token usage
+        usage = entry.get("token_usage")
+        if usage:
+            try:
+                from modelmux.costs import estimate_cost
+
+                est = estimate_cost(
+                    prov,
+                    usage.get("input_tokens", 0),
+                    usage.get("output_tokens", 0),
+                    entry.get("model", ""),
+                )
+                b["cost"] += est.total_cost
+            except Exception:
+                pass
+
+    # Convert to sorted list, compute derived fields
+    sorted_keys = sorted(buckets_map.keys())
+    result_buckets = []
+    cumulative_cost = 0.0
+    for k in sorted_keys:
+        b = buckets_map[k]
+        cumulative_cost += b["cost"]
+        avg_dur = (
+            round(b["total_duration"] / b["count"], 1) if b["count"] > 0 else 0
+        )
+        success_rate = (
+            round(b["success"] / b["count"] * 100, 1) if b["count"] > 0 else 0
+        )
+        result_buckets.append(
+            {
+                "ts": b["ts"],
+                "count": b["count"],
+                "success": b["success"],
+                "error": b["error"],
+                "success_rate": success_rate,
+                "avg_duration": avg_dur,
+                "cost": round(b["cost"], 6),
+                "cumulative_cost": round(cumulative_cost, 6),
+                "by_provider": b["by_provider"],
+            }
+        )
+
+    return {
+        "buckets": result_buckets,
+        "hours": hours,
+        "bucket_minutes": bucket_minutes,
+        "total_entries": len(raw),
+    }
+
+
 def get_history_stats(hours: float = 0, include_costs: bool = False) -> dict:
     """Compute aggregated stats from history."""
     path = _history_file()

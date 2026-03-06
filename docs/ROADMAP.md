@@ -1,6 +1,6 @@
 # modelmux 功能规划
 
-## 当前状态 (v0.23.0)
+## 当前状态 (v0.24.0)
 
 ### MCP 工具
 | 工具 | 功能 |
@@ -22,17 +22,17 @@
 | POST / (tasks/sendSubscribe) | SSE 流式推送（支持 Push Notification） |
 
 ### CLI 命令
-`modelmux` / `a2a-server` / `init` / `config` / `check` / `status` / `history` / `version`
+`modelmux` / `a2a-server` / `init` / `config` / `check` / `status` / `history` / `export` / `benchmark` / `dashboard` / `version`
 
 ### Provider 适配器
 codex / gemini / claude / ollama / dashscope / 自定义插件
 
 ### 基础设施
-审计日志 / 策略引擎 / Profile 系统 / 实时状态追踪 / TUI 配置面板 / 流式输出 / 智能路由 v2 / 成本追踪
+审计日志 / 策略引擎 / Profile 系统 / 实时状态追踪 / TUI 配置面板 / 流式输出 / 智能路由 v2 / 成本追踪 / Web Dashboard / Webhook 通知 / 趋势图表 / 导出报告
 
 ---
 
-## 已完成 (v0.1.0 → v0.22.0)
+## 已完成 (v0.1.0 → v0.24.0)
 
 - [x] 初始原型：三大 CLI 适配器
 - [x] 审计日志 + 策略引擎
@@ -63,23 +63,29 @@ codex / gemini / claude / ollama / dashscope / 自定义插件
 - [x] Provider/Model 语法 (`provider/model`)
 - [x] 任务自动拆解 (DAG 拓扑排序 + 并行波执行)
 - [x] Codex UTF-8 workdir workaround
+- [x] Web Dashboard (REST API + Chart.js 趋势图表)
+- [x] Webhook 通知 (Slack/Discord/通用)
+- [x] 基准测试套件 (`modelmux benchmark`)
+- [x] 导出/报告功能 (`modelmux export`)
 
 ---
 
 ## 近期规划 (P1)
 
-### Web Dashboard (modelmux-dashboard)
-- [x] Starlette REST API (status/history/stats/providers/costs)
+### Web Dashboard 增强
+- [x] Starlette REST API (status/history/stats/providers/costs/trends)
 - [x] 内嵌暗色主题 HTML 面板（5s 自动刷新）
-- [x] `modelmux dashboard` 启动本地 Web 服务
-- [ ] 历史趋势图表（Chart.js）
+- [x] 历史趋势图表（Chart.js）
 - [ ] A2A 协作可视化（轮次、收敛过程）
 
 ### 生态集成
 - [x] Webhook 通知（Slack/Discord/通用 webhook）
 - [x] 基准测试套件 (`modelmux benchmark`)
-- [ ] 导出/报告功能
+- [x] 导出/报告功能
 - [ ] VS Code 扩展
+
+### DashScope 生态
+- [ ] mux_collaborate DashScope 支持验证
 
 ---
 
@@ -95,4 +101,4 @@ codex / gemini / claude / ollama / dashscope / 自定义插件
 
 ---
 
-*最后更新: 2026-03-07 (v0.23.0)*
+*最后更新: 2026-03-07 (v0.24.0)*

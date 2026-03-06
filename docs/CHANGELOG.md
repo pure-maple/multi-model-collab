@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.24.0 (2026-03-07)
+- **Dashboard 趋势图表**: `/api/trends` 端点返回时间序列聚合数据
+  - 按小时分桶：分发量、成功率、平均延迟、累计成本
+  - Chart.js 前端：堆叠柱状图（成功/失败）+ 双轴折线图（成功率/延迟）
+  - 支持自定义时间范围和桶大小（`?hours=24&bucket=60`）
+- **导出/报告功能**: `modelmux export --format csv/json/md`
+  - CSV：完整字段导出，兼容 Excel/Google Sheets
+  - JSON：含统计和成本数据的结构化报告
+  - Markdown：带表格的人类可读报告（Summary + Provider Breakdown + Cost + History）
+  - 支持文件输出（`--output report.csv`）、时间范围/provider 过滤
+- 28 个新测试（9 trends + 3 dashboard API + 16 export），总计 296 个测试通过
+
 ## v0.23.0 (2026-03-07)
 - **Web Dashboard**: `modelmux dashboard` 启动本地 Web 监控面板
   - Starlette REST API: /api/status, /api/history, /api/stats, /api/providers, /api/costs

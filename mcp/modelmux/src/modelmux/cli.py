@@ -240,6 +240,30 @@ def _cmd_benchmark(args: argparse.Namespace) -> None:
         print(f"\nResults saved to {output}")
 
 
+def _cmd_export(args: argparse.Namespace) -> None:
+    """Export history to CSV/JSON/Markdown."""
+    from modelmux.export import run_export
+
+    fmt = getattr(args, "format", "csv")
+    hours = getattr(args, "hours", 0)
+    provider = getattr(args, "provider", "")
+    limit = getattr(args, "limit", 1000)
+    output = getattr(args, "output", "")
+
+    content = run_export(
+        fmt=fmt,
+        hours=hours,
+        provider=provider,
+        limit=limit,
+        output=output,
+    )
+
+    if output:
+        print(f"Exported to {output}")
+    else:
+        print(content)
+
+
 def _cmd_dashboard(args: argparse.Namespace) -> None:
     """Start the web dashboard."""
     from modelmux.dashboard import run_dashboard
@@ -429,6 +453,26 @@ def main() -> None:
         "--list-tasks", action="store_true", help="List available benchmark tasks"
     )
 
+    # modelmux export
+    exp_p = subparsers.add_parser(
+        "export", help="Export history to CSV, JSON, or Markdown"
+    )
+    exp_p.add_argument(
+        "--format",
+        "-f",
+        choices=["csv", "json", "md"],
+        default="csv",
+        help="Output format (default: csv)",
+    )
+    exp_p.add_argument("--hours", type=float, default=0, help="Only last N hours")
+    exp_p.add_argument("--provider", default="", help="Filter by provider")
+    exp_p.add_argument(
+        "-n", "--limit", type=int, default=1000, help="Max entries (default: 1000)"
+    )
+    exp_p.add_argument(
+        "--output", "-o", default="", help="Write to file instead of stdout"
+    )
+
     # modelmux dashboard
     dash_p = subparsers.add_parser(
         "dashboard", help="Start the web monitoring dashboard"
@@ -461,6 +505,8 @@ def main() -> None:
         _cmd_history(args)
     elif args.command == "benchmark":
         _cmd_benchmark(args)
+    elif args.command == "export":
+        _cmd_export(args)
     elif args.command == "dashboard":
         _cmd_dashboard(args)
     elif args.command == "version":

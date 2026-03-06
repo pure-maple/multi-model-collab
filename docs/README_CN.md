@@ -220,6 +220,7 @@ modelmux status       # 监控活跃分发任务
 modelmux status -w    # 实时刷新模式（每秒更新）
 modelmux history      # 查看最近分发记录
 modelmux history --stats --costs   # 统计 + 成本分析
+modelmux export --format csv       # 导出历史为 CSV/JSON/Markdown
 modelmux version      # 显示版本
 ```
 

@@ -167,6 +167,56 @@ class TestApiCosts:
         assert "dashscope" in data["pricing"]
 
 
+class TestApiTrends:
+    def test_empty_trends(self, client):
+        with patch(
+            "modelmux.history.get_trends",
+            return_value={"buckets": [], "hours": 24, "bucket_minutes": 60},
+        ):
+            resp = client.get("/api/trends")
+        data = resp.json()
+        assert data["buckets"] == []
+
+    def test_trends_with_data(self, client):
+        mock_trends = {
+            "buckets": [
+                {
+                    "ts": 1000.0,
+                    "count": 5,
+                    "success": 4,
+                    "error": 1,
+                    "success_rate": 80.0,
+                    "avg_duration": 12.3,
+                    "cost": 0.001,
+                    "cumulative_cost": 0.001,
+                    "by_provider": {"codex": 3, "gemini": 2},
+                }
+            ],
+            "hours": 24,
+            "bucket_minutes": 60,
+            "total_entries": 5,
+        }
+        with patch("modelmux.history.get_trends", return_value=mock_trends):
+            resp = client.get("/api/trends?hours=24&bucket=60")
+        data = resp.json()
+        assert len(data["buckets"]) == 1
+        assert data["buckets"][0]["count"] == 5
+        assert data["buckets"][0]["success_rate"] == 80.0
+
+    def test_trends_query_params(self, client):
+        captured = {}
+
+        def mock_trends(hours, bucket_minutes):
+            captured["hours"] = hours
+            captured["bucket_minutes"] = bucket_minutes
+            return {"buckets": [], "hours": hours, "bucket_minutes": bucket_minutes}
+
+        with patch("modelmux.history.get_trends", side_effect=mock_trends):
+            client.get("/api/trends?hours=48&bucket=30")
+        assert captured["hours"] == 48.0
+        assert captured["bucket_minutes"] == 30
+
+
 class TestCreateApp:
     def test_app_has_all_routes(self):
         app = create_app()
@@ -177,3 +227,4 @@ class TestCreateApp:
         assert "/api/stats" in paths
         assert "/api/providers" in paths
         assert "/api/costs" in paths
+        assert "/api/trends" in paths

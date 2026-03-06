@@ -87,6 +87,7 @@ Web Dashboard (modelmux dashboard --port 41521)
 | `notifications.py` | Webhook notifications (Slack/Discord/generic) |
 | `dashboard.py` | Web dashboard (Starlette REST API + HTML UI) |
 | `benchmark.py` | Provider benchmark suite (standardized tasks + scoring) |
+| `export.py` | Export history to CSV/JSON/Markdown reports |
 | `cli.py` | CLI entry point with subcommands |
 
 ## Dev Workflow

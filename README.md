@@ -222,6 +222,7 @@ modelmux status       # Monitor active dispatches
 modelmux status -w    # Live watch mode (updates every second)
 modelmux history      # View recent dispatches
 modelmux history --stats --costs   # Statistics with cost breakdown
+modelmux export --format csv       # Export history to CSV/JSON/Markdown
 modelmux version      # Show version
 ```
 

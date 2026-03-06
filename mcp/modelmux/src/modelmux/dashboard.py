@@ -100,6 +100,16 @@ async def api_providers(request: Request) -> JSONResponse:
     return JSONResponse({"providers": providers})
 
 
+async def api_trends(request: Request) -> JSONResponse:
+    """GET /api/trends — time-series data for charts."""
+    from modelmux.history import get_trends
+
+    hours = float(request.query_params.get("hours", "24"))
+    bucket_minutes = int(request.query_params.get("bucket", "60"))
+    trends = get_trends(hours=hours, bucket_minutes=bucket_minutes)
+    return JSONResponse(trends)
+
+
 async def api_costs(request: Request) -> JSONResponse:
     """GET /api/costs — cost breakdown."""
     from modelmux.costs import PRICING
@@ -188,11 +198,23 @@ td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
   </div>
 </div>
 
+<div class="grid" style="margin-top:1rem;">
+  <div class="card">
+    <h2>Dispatch Volume</h2>
+    <canvas id="chart-volume" height="180"></canvas>
+  </div>
+  <div class="card">
+    <h2>Success Rate & Latency</h2>
+    <canvas id="chart-perf" height="180"></canvas>
+  </div>
+</div>
+
 <div class="card" style="margin-top:1rem;">
   <h2>Recent History</h2>
   <div id="history"><p class="loading">Loading...</p></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -274,8 +296,30 @@ async function refreshHistory() {
   $('history').innerHTML = h;
 }
 
+let volumeChart = null, perfChart = null;
+
+async function refreshTrends() {
+  const d = await fetchJSON('/api/trends?hours=24&bucket=60');
+  if (!d || !d.buckets || d.buckets.length === 0) return;
+
+  const labels = d.buckets.map(b => new Date(b.ts * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+  const counts = d.buckets.map(b => b.count);
+  const successes = d.buckets.map(b => b.success);
+  const errors = d.buckets.map(b => b.error);
+  const rates = d.buckets.map(b => b.success_rate);
+  const durations = d.buckets.map(b => b.avg_duration);
+
+  const chartOpts = {responsive:true, animation:false, plugins:{legend:{labels:{color:'#8b949e',font:{size:11}}}}, scales:{x:{ticks:{color:'#8b949e',maxTicksLimit:12},grid:{color:'#30363d'}},y:{ticks:{color:'#8b949e'},grid:{color:'#30363d'}}}};
+
+  if (volumeChart) { volumeChart.data.labels = labels; volumeChart.data.datasets[0].data = successes; volumeChart.data.datasets[1].data = errors; volumeChart.update(); }
+  else { volumeChart = new Chart($('chart-volume'), {type:'bar', data:{labels, datasets:[{label:'Success',data:successes,backgroundColor:'#3fb950',stack:'s'},{label:'Error',data:errors,backgroundColor:'#f85149',stack:'s'}]}, options:{...chartOpts, scales:{...chartOpts.scales, y:{...chartOpts.scales.y, stacked:true}, x:{...chartOpts.scales.x, stacked:true}}}}); }
+
+  if (perfChart) { perfChart.data.labels = labels; perfChart.data.datasets[0].data = rates; perfChart.data.datasets[1].data = durations; perfChart.update(); }
+  else { perfChart = new Chart($('chart-perf'), {type:'line', data:{labels, datasets:[{label:'Success %',data:rates,borderColor:'#58a6ff',yAxisID:'y'},{label:'Avg Duration (s)',data:durations,borderColor:'#d29922',yAxisID:'y1'}]}, options:{...chartOpts, scales:{...chartOpts.scales, y:{...chartOpts.scales.y, position:'left',min:0,max:100}, y1:{ticks:{color:'#8b949e'},grid:{drawOnChartArea:false},position:'right',min:0}}}}); }
+}
+
 async function refresh() {
-  await Promise.all([refreshActive(), refreshProviders(), refreshStats(), refreshCosts(), refreshHistory()]);
+  await Promise.all([refreshActive(), refreshProviders(), refreshStats(), refreshCosts(), refreshHistory(), refreshTrends()]);
 }
 refresh();
 setInterval(refresh, 5000);
@@ -295,6 +339,7 @@ def create_app() -> Starlette:
             Route("/api/stats", api_stats),
             Route("/api/providers", api_providers),
             Route("/api/costs", api_costs),
+            Route("/api/trends", api_trends),
         ],
     )
 

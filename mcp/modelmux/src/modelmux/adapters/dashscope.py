@@ -17,7 +17,12 @@ from collections.abc import Callable
 
 import httpx
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter, TokenUsage, sanitize_extra_args
+from modelmux.adapters.base import (
+    AdapterResult,
+    BaseAdapter,
+    TokenUsage,
+    sanitize_extra_args,
+)
 
 DEFAULT_MODEL = "qwen3-coder-plus"
 DEFAULT_BASE_URL = "https://coding.dashscope.aliyuncs.com/v1"

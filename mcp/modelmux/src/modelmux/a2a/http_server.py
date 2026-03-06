@@ -28,13 +28,13 @@ from starlette.routing import Route
 
 from modelmux import __version__
 from modelmux.a2a.engine import CollaborationEngine, EngineConfig
-from modelmux.policy import check_policy, load_policy
 from modelmux.a2a.patterns import list_patterns
 from modelmux.a2a.types import (
     AgentCard,
     CollaborationTask,
     Skill,
 )
+from modelmux.policy import check_policy, load_policy
 
 logger = logging.getLogger("modelmux.a2a.http")
 

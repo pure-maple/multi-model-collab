@@ -40,8 +40,8 @@ from modelmux.decompose import (
 )
 from modelmux.detect import CallerInfo, detect_caller, get_excluded_providers
 from modelmux.history import HistoryQuery, get_history_stats, log_result, read_history
-from modelmux.policy import check_policy, load_policy
 from modelmux.log import setup_logging
+from modelmux.policy import check_policy, load_policy
 from modelmux.routing import smart_route
 from modelmux.status import DispatchStatus, list_active, remove_status, write_status
 

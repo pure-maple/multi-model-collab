@@ -101,7 +101,7 @@ collab_dispatch(
 )
 ```
 
-### 智能路由
+### 智能路由与调用方检测
 
 使用 `provider="auto"` 自动选择最合适的模型：
 
@@ -114,11 +114,65 @@ collab_dispatch(
 )
 ```
 
-路由规则：
+**调用方自动检测**：Hub 通过 MCP `clientInfo` 握手信息自动识别调用方平台，`auto` 路由时自动排除调用方自身，防止自分发循环：
+
+```python
+# 从 Claude Code 调用 → 自动路由到 Codex 或 Gemini（永远不会回到 Claude）
+collab_dispatch(provider="auto", task="审查这段代码的安全性")
+# 任务关键词匹配到 claude，但 claude 是调用方 → 重定向到 codex
+```
+
+支持的调用方检测：
+- **CLI 平台**：Claude Code、Codex CLI、Gemini CLI → 自动排除
+- **IDE 平台**：Cursor、Windsurf、Cline、VS Code、Zed → 仅检测，不排除
+- **未知客户端**：不影响路由
+
+内置路由规则：
 - **前端/UI/CSS/React/Vue** 关键词 → **Gemini**
 - **算法/后端/API/调试/修复** 关键词 → **Codex**
 - **架构/审查/安全/分析** 关键词 → **Claude**
 - **无明确信号** → 默认 **Codex**（最通用）
+
+### 用户偏好配置
+
+创建 `.collab-hub/profiles.toml`（项目级）或 `~/.config/collab-hub/profiles.toml`（用户级）：
+
+```toml
+# 自定义路由规则
+[routing]
+default_provider = "codex"
+
+[[routing.rules]]
+provider = "gemini"
+[routing.rules.match]
+keywords = ["frontend", "react", "css"]
+
+[[routing.rules]]
+provider = "claude"
+[routing.rules.match]
+keywords = ["security", "architecture"]
+
+# 调用方检测配置（可选）
+caller_override = ""          # 强制指定调用方身份："claude"/"codex"/"gemini"
+auto_exclude_caller = true    # 自动排除检测到的调用方
+
+# 命名配置 profile（第三方模型支持）
+[profiles.budget]
+description = "使用更便宜的模型"
+[profiles.budget.providers.codex]
+model = "gpt-4.1-mini"
+[profiles.budget.providers.gemini]
+model = "gemini-2.0-flash"
+
+[profiles.china]
+description = "国产模型"
+[profiles.china.providers.codex]
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-coder"
+```
+
+配置加载优先级：项目级 > 用户级 > 内置默认。支持 JSON / TOML / YAML 格式。
 
 ### 指定模型版本
 
@@ -225,6 +279,7 @@ cp SKILL.md .gemini/skills/multi-model-collab/SKILL.md
 | `session_id` | 会话 ID，传入下次调用可续接对话 |
 | `duration_seconds` | 执行耗时（秒） |
 | `routed_from` | 仅 `auto` 路由时出现，值为 `"auto"` |
+| `caller_excluded` | 仅 `auto` 路由时出现，被排除的调用方 |
 
 ## 项目结构
 
@@ -239,6 +294,8 @@ multi-model-collab/
 │   ├── README.md
 │   └── src/collab_hub/
 │       ├── server.py               # MCP 工具：collab_dispatch, collab_check
+│       ├── config.py               # 用户偏好、路由规则、配置加载
+│       ├── detect.py               # 调用方平台检测与自动排除
 │       ├── cli.py                  # 入口
 │       └── adapters/               # 模型适配器
 │           ├── base.py             # 线程化子进程管理 + 标准化输出
@@ -246,7 +303,8 @@ multi-model-collab/
 │           ├── gemini.py           # stream-json 解析 + session_id
 │           └── claude.py           # 纯文本解析
 ├── mcp/collab-hub/tests/
-│   └── test_e2e.py                 # 端到端测试（5 项全通过）
+│   ├── test_detect.py              # 平台检测单元测试（15 项全通过）
+│   └── test_e2e.py                 # 端到端测试
 ├── scripts/                        # 降级方案：基于 tmux 的 shell 脚本
 │   ├── session.sh                  # tmux 会话管理
 │   ├── dispatch.sh                 # 任务分发

@@ -1,6 +1,6 @@
 """End-to-end tests for collab-hub MCP server.
 
-Run with: python tests/test_e2e.py
+Run with: cd mcp/collab-hub && .venv/bin/python tests/test_e2e.py
 Requires: codex and gemini CLIs on PATH.
 """
 
@@ -8,6 +8,7 @@ import asyncio
 import json
 import sys
 import time
+from unittest.mock import AsyncMock, MagicMock
 
 # Add src to path for direct execution
 sys.path.insert(0, "src")
@@ -15,21 +16,46 @@ sys.path.insert(0, "src")
 from collab_hub.server import collab_dispatch, collab_check
 
 
+def make_mock_ctx(client_name: str = "test-runner", version: str = "1.0"):
+    """Create a mock FastMCP Context for testing."""
+    ctx = MagicMock()
+    ctx._request_context = MagicMock()
+    ctx.session.client_params.clientInfo.name = client_name
+    ctx.session.client_params.clientInfo.version = version
+    ctx.warning = AsyncMock()
+    ctx.info = AsyncMock()
+    return ctx
+
+
 async def test_collab_check():
-    """Test that collab_check returns adapter availability."""
+    """Test that collab_check returns adapter availability and caller info."""
     print("=" * 60)
     print("TEST: collab_check")
     print("=" * 60)
 
-    result = json.loads(await collab_check())
+    ctx = make_mock_ctx("claude-code", "1.0.30")
+    result = json.loads(await collab_check(ctx=ctx))
     print(json.dumps(result, indent=2))
 
     assert "codex" in result, "Missing codex in check result"
     assert "gemini" in result, "Missing gemini in check result"
     assert "claude" in result, "Missing claude in check result"
 
-    available_count = sum(1 for v in result.values() if v["available"])
-    print(f"\n[PASS] {available_count}/3 CLIs available")
+    # Verify caller detection
+    assert "_caller" in result, "Missing _caller section"
+    assert result["_caller"]["client_name"] == "claude-code"
+    assert result["_caller"]["provider"] == "claude"
+    assert result["_caller"]["platform"] == "cli"
+
+    # Verify exclusion marking
+    assert result["claude"]["excluded"] is True, "Claude should be excluded (caller)"
+    assert result["codex"]["excluded"] is False, "Codex should not be excluded"
+
+    available_count = sum(
+        1 for k, v in result.items()
+        if not k.startswith("_") and v.get("available")
+    )
+    print(f"\n[PASS] {available_count}/3 CLIs available, caller detection works")
     return result
 
 
@@ -39,10 +65,12 @@ async def test_dispatch_simple(provider: str):
     print(f"TEST: collab_dispatch ({provider}) - simple math")
     print("=" * 60)
 
+    ctx = make_mock_ctx("test-runner")
     start = time.monotonic()
     raw = await collab_dispatch(
         provider=provider,
         task="What is 7 * 8? Reply with ONLY the number, nothing else.",
+        ctx=ctx,
         workdir="/tmp",
         timeout=60,
     )
@@ -82,9 +110,11 @@ def merge(left, right):
     return result
 '''
 
+    ctx = make_mock_ctx("test-runner")
     raw = await collab_dispatch(
         provider="codex",
         task=f"Review this merge function for bugs. Be concise:\n```python\n{code}\n```",
+        ctx=ctx,
         workdir="/tmp",
         sandbox="read-only",
         timeout=120,
@@ -96,7 +126,6 @@ def merge(left, right):
     print(f"Output preview: {result['output'][:300]}")
 
     assert result["status"] == "success"
-    # The bug is that right[j:] remainder is not appended
     output_lower = result["output"].lower()
     has_bug_mention = any(w in output_lower for w in ["right", "bug", "miss", "remain", "forgot"])
     print(f"Mentions the bug: {has_bug_mention}")
@@ -110,10 +139,13 @@ async def test_session_continuity():
     print("TEST: Session continuity (codex)")
     print("=" * 60)
 
+    ctx = make_mock_ctx("test-runner")
+
     # Turn 1
     raw1 = await collab_dispatch(
         provider="codex",
         task="Remember the number 42. Just confirm you remember it.",
+        ctx=ctx,
         workdir="/tmp",
         timeout=60,
     )
@@ -126,6 +158,7 @@ async def test_session_continuity():
     raw2 = await collab_dispatch(
         provider="codex",
         task="What number did I ask you to remember? Reply with just the number.",
+        ctx=ctx,
         workdir="/tmp",
         session_id=r1["session_id"],
         timeout=60,
@@ -147,16 +180,19 @@ async def test_parallel_dispatch():
     print("TEST: Parallel dispatch (codex + gemini)")
     print("=" * 60)
 
+    ctx = make_mock_ctx("test-runner")
     start = time.monotonic()
     codex_task = collab_dispatch(
         provider="codex",
         task="Write a Python one-liner that reverses a string. Reply with ONLY the code.",
+        ctx=ctx,
         workdir="/tmp",
         timeout=60,
     )
     gemini_task = collab_dispatch(
         provider="gemini",
         task="Write a Python one-liner that reverses a string. Reply with ONLY the code.",
+        ctx=ctx,
         workdir="/tmp",
         timeout=60,
     )
@@ -177,13 +213,50 @@ async def test_parallel_dispatch():
     return results
 
 
+async def test_auto_routing_exclusion():
+    """Test that auto routing excludes the caller platform."""
+    print(f"\n{'=' * 60}")
+    print("TEST: Auto-routing caller exclusion")
+    print("=" * 60)
+
+    # Simulate Claude Code calling with a task that would route to claude
+    ctx = make_mock_ctx("claude-code", "1.0.30")
+    raw = await collab_dispatch(
+        provider="auto",
+        task="Review and analyze this architecture for security threats",
+        ctx=ctx,
+        workdir="/tmp",
+        timeout=60,
+    )
+    result = json.loads(raw)
+
+    print(f"Provider: {result['provider']}")
+    print(f"Routed from: {result.get('routed_from')}")
+    print(f"Caller excluded: {result.get('caller_excluded')}")
+
+    # Should NOT route to claude since that's the caller
+    assert result["provider"] != "claude", \
+        f"Should not route to claude (the caller), got {result['provider']}"
+    assert result.get("routed_from") == "auto"
+    assert result.get("caller_excluded") == "claude"
+
+    print(f"[PASS] Auto-routing excluded caller (claude), routed to {result['provider']}")
+    return result
+
+
 async def main():
     print("collab-hub End-to-End Tests")
     print("=" * 60)
 
     # Check availability first
     check = await test_collab_check()
-    available = {k: v["available"] for k, v in json.loads(await collab_check()).items()}
+    ctx = make_mock_ctx("test-runner")
+    check_result = json.loads(await collab_check(ctx=ctx))
+    available = {
+        k: v.get("available", False)
+        for k, v in check_result.items()
+        if not k.startswith("_")
+    }
 
     passed = 0
     total = 0
@@ -226,6 +299,14 @@ async def main():
             passed += 1
         except Exception as e:
             print(f"[FAIL] parallel dispatch: {e}")
+
+    # Auto-routing exclusion (does not require CLIs for basic test)
+    total += 1
+    try:
+        await test_auto_routing_exclusion()
+        passed += 1
+    except Exception as e:
+        print(f"[FAIL] auto-routing exclusion: {e}")
 
     print(f"\n{'=' * 60}")
     print(f"RESULTS: {passed}/{total} tests passed")

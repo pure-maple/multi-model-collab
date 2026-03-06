@@ -111,6 +111,8 @@ class CollabConfig:
     routing_rules: list[RoutingRule] = field(default_factory=list)
     default_provider: str = "codex"
     disabled_providers: list[str] = field(default_factory=list)
+    caller_override: str = ""  # Force caller identity (claude/codex/gemini)
+    auto_exclude_caller: bool = True  # Auto-exclude detected caller from routing
 
 
 def _find_config_file(directory: str | Path) -> Path | None:
@@ -191,6 +193,8 @@ def _parse_config(data: dict[str, Any]) -> CollabConfig:
         "default_provider", "codex"
     )
     config.disabled_providers = data.get("disabled_providers", [])
+    config.caller_override = data.get("caller_override", "")
+    config.auto_exclude_caller = data.get("auto_exclude_caller", True)
 
     for name, pdata in data.get("profiles", {}).items():
         if isinstance(pdata, dict):
@@ -222,6 +226,13 @@ def _merge_configs(base: CollabConfig, override: CollabConfig) -> CollabConfig:
     merged.routing_rules = (
         override.routing_rules if override.routing_rules
         else base.routing_rules
+    )
+
+    # Caller detection settings
+    merged.caller_override = override.caller_override or base.caller_override
+    merged.auto_exclude_caller = (
+        override.auto_exclude_caller if override.caller_override
+        else base.auto_exclude_caller
     )
 
     return merged

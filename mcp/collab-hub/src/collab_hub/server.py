@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from collab_hub.adapters import ADAPTERS, BaseAdapter
 from collab_hub.config import (
@@ -23,6 +23,7 @@ from collab_hub.config import (
     load_config,
     route_by_rules,
 )
+from collab_hub.detect import CallerInfo, detect_caller, get_excluded_providers
 
 mcp = FastMCP(
     "collab-hub",
@@ -98,10 +99,30 @@ def _get_adapter(provider: str) -> BaseAdapter:
     return _adapter_cache[provider]
 
 
+def _detect_and_build_exclusions(
+    ctx: Context, config: CollabConfig,
+) -> tuple[CallerInfo, list[str]]:
+    """Detect caller and build the combined exclusion list."""
+    session = ctx.session if ctx._request_context else None
+    caller = detect_caller(
+        session=session,
+        config_override=config.caller_override,
+    )
+
+    excluded = list(config.disabled_providers)
+    if config.auto_exclude_caller:
+        for p in get_excluded_providers(caller):
+            if p not in excluded:
+                excluded.append(p)
+
+    return caller, excluded
+
+
 @mcp.tool()
 async def collab_dispatch(
     provider: Literal["auto", "codex", "gemini", "claude"],
     task: str,
+    ctx: Context,
     workdir: str = ".",
     sandbox: Literal["read-only", "write", "full"] = "read-only",
     session_id: str = "",
@@ -114,9 +135,9 @@ async def collab_dispatch(
 
     Args:
         provider: Which model to use — "auto" (smart routing based on task
-            and user config), "codex" (code generation, algorithms, debugging),
-            "gemini" (frontend, design, multimodal), or "claude" (architecture,
-            reasoning, review).
+            and user config, auto-excludes the calling platform), "codex"
+            (code generation, algorithms, debugging), "gemini" (frontend,
+            design, multimodal), or "claude" (architecture, reasoning, review).
         task: The task description / prompt to send to the model.
         workdir: Working directory for the model to operate in.
         sandbox: Security level — "read-only" (default, safe), "write"
@@ -137,6 +158,9 @@ async def collab_dispatch(
     resolved_workdir = str(Path(workdir).resolve())
     config = load_config(resolved_workdir)
 
+    # Detect caller and build exclusion list
+    caller, excluded = _detect_and_build_exclusions(ctx, config)
+
     # Determine which profile to use
     profile_name = profile or config.active_profile
     active_prof = config.profiles.get(profile_name)
@@ -145,19 +169,26 @@ async def collab_dispatch(
     actual_provider = provider
     if provider == "auto":
         actual_provider = _auto_route(task, config)
-        # Skip disabled providers
-        if actual_provider in config.disabled_providers:
+        # Skip excluded providers (disabled + auto-excluded caller)
+        if actual_provider in excluded:
             for alt in ["codex", "gemini", "claude"]:
-                if alt != actual_provider and alt not in config.disabled_providers:
+                if alt != actual_provider and alt not in excluded:
                     actual_provider = alt
                     break
+
+    # Warn if explicitly dispatching to self
+    if provider != "auto" and provider in excluded and caller.provider == provider:
+        await ctx.warning(
+            f"Dispatching to '{provider}' which appears to be the caller. "
+            f"This may cause a self-dispatch loop."
+        )
 
     adapter = _get_adapter(actual_provider)
 
     if not adapter.check_available():
         if provider == "auto":
             for fallback in ["codex", "gemini", "claude"]:
-                if fallback != actual_provider:
+                if fallback != actual_provider and fallback not in excluded:
                     fb_adapter = _get_adapter(fallback)
                     if fb_adapter.check_available():
                         actual_provider = fallback
@@ -216,19 +247,22 @@ async def collab_dispatch(
     result_dict = result.to_dict()
     if provider == "auto":
         result_dict["routed_from"] = "auto"
+        if caller.provider:
+            result_dict["caller_excluded"] = caller.provider
     if profile_name != "default" and active_prof:
         result_dict["profile"] = profile_name
     return json.dumps(result_dict, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()
-async def collab_check() -> str:
+async def collab_check(ctx: Context) -> str:
     """Check which model CLIs are available and show active configuration.
 
     Returns availability status for codex, gemini, and claude CLIs,
-    plus the active profile name and available profiles.
+    the active profile, detected caller platform, and excluded providers.
     """
     config = load_config(".")
+    caller, excluded = _detect_and_build_exclusions(ctx, config)
 
     status: dict = {}
     for name, cls in ADAPTERS.items():
@@ -236,13 +270,24 @@ async def collab_check() -> str:
         status[name] = {
             "available": adapter.check_available(),
             "binary": adapter._binary_name(),
+            "excluded": name in excluded,
         }
+
+    status["_caller"] = {
+        "client_name": caller.client_name,
+        "client_version": caller.client_version,
+        "provider": caller.provider,
+        "platform": caller.platform,
+        "detection_method": caller.detection_method,
+    }
 
     status["_config"] = {
         "active_profile": config.active_profile,
         "available_profiles": list(config.profiles.keys()) or ["default (built-in)"],
         "custom_routing_rules": len(config.routing_rules),
         "disabled_providers": config.disabled_providers,
+        "auto_exclude_caller": config.auto_exclude_caller,
+        "caller_override": config.caller_override,
     }
 
     return json.dumps(status, indent=2)

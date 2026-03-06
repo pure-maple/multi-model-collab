@@ -121,6 +121,50 @@ cp SKILL.md .agents/skills/multi-model-collab/SKILL.md
 cp SKILL.md .gemini/skills/multi-model-collab/SKILL.md
 ```
 
+## Smart Routing & Caller Detection
+
+When using `provider="auto"`, the hub:
+1. Detects which platform is calling via MCP `clientInfo`
+2. Auto-excludes the caller from routing (prevents self-dispatch loops)
+3. Routes to the best model based on task keywords
+
+```
+# From Claude Code → auto-routes to Codex or Gemini (never back to Claude)
+collab_dispatch(provider="auto", task="Implement a REST API")
+```
+
+### User Configuration
+
+Create `.collab-hub/profiles.toml` (project-level) or `~/.config/collab-hub/profiles.toml` (user-level):
+
+```toml
+# Custom routing rules
+[routing]
+default_provider = "codex"
+
+[[routing.rules]]
+provider = "gemini"
+[routing.rules.match]
+keywords = ["frontend", "react", "css"]
+
+[[routing.rules]]
+provider = "claude"
+[routing.rules.match]
+keywords = ["security", "architecture"]
+
+# Caller detection override (optional)
+caller_override = ""          # Force caller identity: "claude"/"codex"/"gemini"
+auto_exclude_caller = true    # Auto-exclude detected caller from routing
+
+# Named profiles for third-party models
+[profiles.budget]
+description = "Use cheaper models"
+[profiles.budget.providers.codex]
+model = "gpt-4.1-mini"
+[profiles.budget.providers.gemini]
+model = "gemini-2.0-flash"
+```
+
 ## Output Schema
 
 All results follow the canonical schema:
@@ -133,7 +177,9 @@ All results follow the canonical schema:
     "summary": "First 200 chars...",
     "output": "Full model response",
     "session_id": "uuid-for-multi-turn",
-    "duration_seconds": 12.5
+    "duration_seconds": 12.5,
+    "routed_from": "auto",
+    "caller_excluded": "claude"
 }
 ```
 
@@ -147,6 +193,8 @@ multi-model-collab/
 │   ├── pyproject.toml
 │   └── src/collab_hub/
 │       ├── server.py           # MCP tools: collab_dispatch, collab_check
+│       ├── config.py           # User profiles, routing rules, config loading
+│       ├── detect.py           # Caller platform detection & auto-exclusion
 │       ├── cli.py              # Entry point
 │       └── adapters/
 │           ├── base.py         # Threaded subprocess, canonical schema

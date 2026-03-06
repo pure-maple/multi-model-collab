@@ -54,6 +54,15 @@ TASK_NOT_CANCELABLE = -32002
 
 
 @dataclass
+class PushConfig:
+    """Push notification configuration for a task."""
+
+    url: str = ""
+    token: str = ""
+    events: list[str] = field(default_factory=lambda: ["completed", "failed"])
+
+
+@dataclass
 class TaskEntry:
     """An active or completed collaboration task."""
 
@@ -65,6 +74,7 @@ class TaskEntry:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     cancel_event: asyncio.Event | None = None
+    push_config: PushConfig | None = None
 
 
 class TaskStore:
@@ -232,7 +242,7 @@ class A2AServer:
             skills=skills,
             capabilities={
                 "streaming": True,
-                "pushNotifications": False,
+                "pushNotifications": True,
                 "stateTransitionHistory": True,
             },
             auth_schemes=auth_schemes,
@@ -240,6 +250,49 @@ class A2AServer:
 
         self._agent_card = card.to_dict()
         return self._agent_card
+
+    async def _send_push_notification(self, entry: TaskEntry, event_type: str) -> None:
+        """Fire a webhook POST to the client's push notification URL."""
+        pc = entry.push_config
+        if not pc or not pc.url:
+            return
+        if event_type not in pc.events:
+            return
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tasks/pushNotification",
+            "params": {
+                "id": entry.task_id,
+                "contextId": entry.context_id,
+                "status": {"state": entry.state},
+                "result": entry.result,
+                "event": event_type,
+            },
+        }
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if pc.token:
+            headers["Authorization"] = f"Bearer {pc.token}"
+
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(pc.url, json=payload, headers=headers)
+                logger.info(
+                    "Push notification sent to %s (task=%s, status=%d)",
+                    pc.url,
+                    entry.task_id,
+                    resp.status_code,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to send push notification to %s for task %s",
+                pc.url,
+                entry.task_id,
+                exc_info=True,
+            )
 
     # --- HTTP Handlers ---
 
@@ -336,6 +389,9 @@ class A2AServer:
         if not entry:
             entry = self.store.create(task_id=task_id)
 
+        # Parse push notification config
+        entry.push_config = _extract_push_config(params)
+
         entry.state = "working"
         self.store.update(entry.task_id, state="working")
 
@@ -357,6 +413,9 @@ class A2AServer:
         entry.result = result
         entry.state = collab.state.value
         self.store.update(entry.task_id, state=entry.state, result=result)
+
+        # Fire push notification
+        await self._send_push_notification(entry, entry.state)
 
         return result
 
@@ -424,6 +483,9 @@ class A2AServer:
         entry = self.store.get(task_id) if task_id else None
         if not entry:
             entry = self.store.create(task_id=task_id)
+
+        entry.push_config = _extract_push_config(params)
+        server_ref = self  # capture for closure
 
         async def event_generator() -> AsyncGenerator[dict[str, str], None]:
             # Initial status event
@@ -530,6 +592,9 @@ class A2AServer:
                         }
                     ),
                 }
+
+                # Fire push notification
+                await server_ref._send_push_notification(entry, entry.state)
             except asyncio.CancelledError:
                 # Client disconnected — cancel the background task
                 collab_future.cancel()
@@ -653,6 +718,21 @@ def _extract_task_params(params: dict[str, Any]) -> TaskParams:
         pattern=pattern,
         provider_map=provider_map,
         timeout_per_turn=timeout_per_turn,
+    )
+
+
+def _extract_push_config(params: dict[str, Any]) -> PushConfig | None:
+    """Extract push notification config from JSON-RPC params."""
+    push = params.get("pushNotification") or params.get("push_notification")
+    if not push or not isinstance(push, dict):
+        return None
+    url = push.get("url", "")
+    if not url:
+        return None
+    return PushConfig(
+        url=url,
+        token=push.get("token", ""),
+        events=push.get("events", ["completed", "failed"]),
     )
 
 

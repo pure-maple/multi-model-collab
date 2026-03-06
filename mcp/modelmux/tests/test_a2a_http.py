@@ -809,3 +809,146 @@ def test_task_store_load_skips_blank_lines(tmp_path):
     store = TaskStore(persist_path=str(persist_file))
     assert store.get("blank-1") is not None
     assert store.get("blank-2") is not None
+
+
+# ---------------------------------------------------------------------------
+# Push notification tests
+# ---------------------------------------------------------------------------
+
+
+def test_extract_push_config():
+    """_extract_push_config should parse pushNotification from params."""
+    from modelmux.a2a.http_server import _extract_push_config
+
+    params = {
+        "pushNotification": {
+            "url": "https://example.com/webhook",
+            "token": "secret-123",
+            "events": ["completed", "failed", "canceled"],
+        }
+    }
+    pc = _extract_push_config(params)
+    assert pc is not None
+    assert pc.url == "https://example.com/webhook"
+    assert pc.token == "secret-123"
+    assert "canceled" in pc.events
+
+
+def test_extract_push_config_missing():
+    """No pushNotification should return None."""
+    from modelmux.a2a.http_server import _extract_push_config
+
+    assert _extract_push_config({}) is None
+    assert _extract_push_config({"pushNotification": {}}) is None
+    assert _extract_push_config({"pushNotification": {"url": ""}}) is None
+
+
+def test_extract_push_config_defaults():
+    """Default events should be completed and failed."""
+    from modelmux.a2a.http_server import _extract_push_config
+
+    pc = _extract_push_config({"pushNotification": {"url": "http://x.com/hook"}})
+    assert pc is not None
+    assert pc.events == ["completed", "failed"]
+    assert pc.token == ""
+
+
+def test_agent_card_declares_push_notifications():
+    """Agent Card should declare pushNotifications: true."""
+    client = _make_client()
+    resp = client.get("/.well-known/agent.json")
+    assert resp.status_code == 200
+    card = resp.json()
+    assert card["capabilities"]["pushNotifications"] is True
+
+
+def test_push_notification_fires_on_completed():
+    """Push notification should POST to webhook URL on task completion."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from modelmux.a2a.http_server import PushConfig, TaskEntry
+
+    server = A2AServer(
+        get_adapter=_get_fake_adapter,
+        host="127.0.0.1",
+        port=0,
+    )
+
+    entry = TaskEntry(
+        task_id="push-test-1",
+        state="completed",
+        result={"id": "push-test-1", "status": {"state": "completed"}},
+        push_config=PushConfig(
+            url="http://localhost:9999/webhook",
+            token="tok",
+            events=["completed", "failed"],
+        ),
+    )
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_client.post.return_value = AsyncMock(status_code=200)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_cls.return_value = mock_client
+
+        asyncio.run(server._send_push_notification(entry, "completed"))
+
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "http://localhost:9999/webhook"
+        payload = call_args[1]["json"]
+        assert payload["method"] == "tasks/pushNotification"
+        assert payload["params"]["id"] == "push-test-1"
+        headers = call_args[1]["headers"]
+        assert headers["Authorization"] == "Bearer tok"
+
+
+def test_push_notification_skips_non_matching_event():
+    """Push notification should not fire for events not in the list."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from modelmux.a2a.http_server import PushConfig, TaskEntry
+
+    server = A2AServer(
+        get_adapter=_get_fake_adapter,
+        host="127.0.0.1",
+        port=0,
+    )
+
+    entry = TaskEntry(
+        task_id="push-test-2",
+        state="working",
+        push_config=PushConfig(
+            url="http://localhost:9999/webhook",
+            events=["completed"],  # only completed
+        ),
+    )
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_cls.return_value = mock_client
+
+        asyncio.run(server._send_push_notification(entry, "working"))
+
+        # Should NOT have been called
+        mock_client.post.assert_not_called()
+
+
+def test_push_notification_no_config():
+    """No push config should be a no-op."""
+    import asyncio
+
+    from modelmux.a2a.http_server import TaskEntry
+
+    server = A2AServer(
+        get_adapter=_get_fake_adapter,
+        host="127.0.0.1",
+        port=0,
+    )
+
+    entry = TaskEntry(task_id="no-push", state="completed")
+    # Should not raise
+    asyncio.run(server._send_push_notification(entry, "completed"))

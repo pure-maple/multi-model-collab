@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.22.0 (2026-03-07)
+- **Task Decomposition**: `mux_dispatch(auto_decompose=True)` 自动拆解复杂任务
+  - 三阶段流程：planner 分析 → wave executor 并行/顺序执行 → merger 合并结果
+  - DAG 拓扑排序，支持依赖声明和并行执行波
+  - 新增 `decompose.py` 模块（DecompositionPlan, Subtask, parse, merge）
+- **Provider/Model 语法**: `mux_dispatch(provider="dashscope/kimi-k2.5")` 和
+  `mux_broadcast(providers=["dashscope/kimi-k2.5", "dashscope/MiniMax-M2.5"])`
+  - 同一 provider 不同 model 可并行广播
+  - `_parse_provider_spec()` 统一解析
+- **DashScope token usage**: 从 OpenAI 兼容 API 响应提取 usage 字段
+  - `costs.py` 新增 DashScope 全模型定价（Coding Plan 包月 = $0）
+  - `estimate_cost()` 支持 `provider/model` 格式
+- 28 个新测试，总计 217 个测试通过
+
 ## v0.21.0 (2026-03-07)
 - **成本追踪**: TokenUsage 数据类 + parse_token_usage() 适配器方法
 - 自动从 Codex (turn.completed) 和 Gemini (usageMetadata) 提取 token 用量

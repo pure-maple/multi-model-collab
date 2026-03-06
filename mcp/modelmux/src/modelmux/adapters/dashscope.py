@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 import httpx
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from modelmux.adapters.base import AdapterResult, BaseAdapter, TokenUsage
 
 DEFAULT_MODEL = "qwen3-coder-plus"
 DEFAULT_BASE_URL = "https://coding.dashscope.aliyuncs.com/v1"
@@ -192,6 +192,16 @@ class DashScopeAdapter(BaseAdapter):
             content = choices[0].get("message", {}).get("content", "")
             actual_model = data.get("model", model)
 
+            # Extract token usage from OpenAI-compatible response
+            token_usage = None
+            usage = data.get("usage")
+            if usage and isinstance(usage, dict):
+                token_usage = TokenUsage(
+                    input_tokens=usage.get("prompt_tokens", 0),
+                    output_tokens=usage.get("completion_tokens", 0),
+                    total_tokens=usage.get("total_tokens", 0),
+                )
+
             if on_progress and content:
                 for line in content.split("\n")[:5]:
                     on_progress(line)
@@ -207,6 +217,7 @@ class DashScopeAdapter(BaseAdapter):
                 session_id=session_id,
                 duration_seconds=duration,
                 error=None if content else "Empty content in response",
+                token_usage=token_usage,
             )
 
         except (KeyError, IndexError, TypeError) as e:

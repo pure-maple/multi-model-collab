@@ -32,6 +32,11 @@ from modelmux.config import (
     load_config,
     route_by_rules,
 )
+from modelmux.decompose import (
+    DECOMPOSE_SYSTEM_PROMPT,
+    build_merge_prompt,
+    parse_decomposition,
+)
 from modelmux.detect import CallerInfo, detect_caller, get_excluded_providers
 from modelmux.history import HistoryQuery, get_history_stats, log_result, read_history
 from modelmux.policy import check_policy, load_policy
@@ -168,6 +173,14 @@ def _build_extra_args(
     return extra_args, env_overrides
 
 
+def _parse_provider_spec(spec: str) -> tuple[str, str]:
+    """Parse 'provider/model' into (provider, model) tuple."""
+    if "/" in spec:
+        provider, model = spec.split("/", 1)
+        return provider, model
+    return spec, ""
+
+
 def _get_fallback_candidates(
     current: str,
     excluded: list[str],
@@ -176,6 +189,155 @@ def _get_fallback_candidates(
     """Return available provider names to try as fallback, in order."""
     order = priority or ["codex", "gemini", "claude", "ollama"]
     return [p for p in order if p != current and p not in excluded]
+
+
+async def _auto_decompose_task(
+    task: str,
+    planner_provider: str,
+    ctx: Context,
+    resolved_workdir: str,
+    sandbox: str,
+    timeout: int,
+    model: str,
+    profile: str,
+    profile_name: str,
+    active_prof: object | None,
+    caller: CallerInfo,
+    excluded: list[str],
+) -> str | None:
+    """Attempt to decompose a complex task into subtasks.
+
+    Returns the merged result JSON string if decomposition succeeded,
+    or None if the task should not be decomposed (falls through to normal dispatch).
+    """
+    await ctx.info("Analyzing task for decomposition...")
+
+    # Step 1: Ask planner to decompose
+    planner_adapter = _get_adapter(planner_provider)
+    planner_extra, planner_env = _build_extra_args(
+        planner_provider, model, profile, "", active_prof
+    )
+
+    planner_prompt = f"{DECOMPOSE_SYSTEM_PROMPT}\n\nTask: {task}"
+    planner_result = await planner_adapter.run(
+        prompt=planner_prompt,
+        workdir=resolved_workdir,
+        sandbox="read-only",
+        timeout=min(timeout, 120),
+        extra_args=planner_extra if planner_extra else None,
+        env_overrides=planner_env if planner_env else None,
+    )
+
+    if planner_result.status != "success":
+        await ctx.info("Decomposition planner failed, falling back to direct dispatch")
+        return None
+
+    plan = parse_decomposition(planner_result.output)
+    if not plan.should_decompose:
+        await ctx.info("Task is simple enough — dispatching directly")
+        return None
+
+    await ctx.info(
+        f"Decomposed into {len(plan.subtasks)} subtasks: "
+        f"{', '.join(s.name for s in plan.subtasks)}"
+    )
+
+    # Step 2: Execute subtasks in dependency waves
+    all_known = get_all_adapters()
+    subtask_results: dict[str, str] = {}
+    step_details: list[dict] = []
+
+    for wave_idx, wave in enumerate(plan.execution_order()):
+        if len(wave) > 1:
+            await ctx.info(
+                f"Wave {wave_idx + 1}: running {len(wave)} subtasks in parallel"
+            )
+        else:
+            await ctx.info(f"Wave {wave_idx + 1}: {wave[0].name}")
+
+        async def _run_subtask(subtask):
+            # Resolve provider
+            sub_provider = subtask.provider
+            if sub_provider == "auto" or sub_provider not in all_known:
+                sub_provider = planner_provider
+            if sub_provider in excluded:
+                sub_provider = planner_provider
+
+            sub_adapter = _get_adapter(sub_provider)
+            if not sub_adapter.check_available():
+                sub_adapter = _get_adapter(planner_provider)
+                sub_provider = planner_provider
+
+            # Inject dependency context into the subtask prompt
+            sub_prompt = subtask.task
+            for dep_name in subtask.depends_on:
+                if dep_name in subtask_results:
+                    sub_prompt += (
+                        f"\n\n--- Context from '{dep_name}' ---\n"
+                        f"{subtask_results[dep_name][:2000]}"
+                    )
+
+            sub_extra, sub_env = _build_extra_args(
+                sub_provider, "", profile, "", active_prof
+            )
+            result = await sub_adapter.run(
+                prompt=sub_prompt,
+                workdir=resolved_workdir,
+                sandbox=sandbox,
+                timeout=timeout,
+                extra_args=sub_extra if sub_extra else None,
+                env_overrides=sub_env if sub_env else None,
+            )
+            return subtask.name, sub_provider, result
+
+        wave_results = await asyncio.gather(*[_run_subtask(s) for s in wave])
+        for name, sub_prov, result in wave_results:
+            subtask_results[name] = result.output if result.status == "success" else ""
+            step_details.append(
+                {
+                    "name": name,
+                    "provider": sub_prov,
+                    "status": result.status,
+                    "duration_seconds": round(result.duration_seconds, 1),
+                    "summary": result.summary,
+                }
+            )
+
+    # Step 3: Merge results
+    await ctx.info("Merging subtask results...")
+    merge_prompt = build_merge_prompt(task, subtask_results)
+    merge_adapter = _get_adapter(planner_provider)
+    merge_extra, merge_env = _build_extra_args(
+        planner_provider, model, profile, "", active_prof
+    )
+    merge_result = await merge_adapter.run(
+        prompt=merge_prompt,
+        workdir=resolved_workdir,
+        sandbox="read-only",
+        timeout=timeout,
+        extra_args=merge_extra if merge_extra else None,
+        env_overrides=merge_env if merge_env else None,
+    )
+
+    decompose_result = {
+        "run_id": str(uuid.uuid4())[:8],
+        "provider": planner_provider,
+        "status": merge_result.status,
+        "summary": merge_result.summary,
+        "output": merge_result.output,
+        "decomposed": True,
+        "subtasks": step_details,
+        "duration_seconds": round(
+            sum(s["duration_seconds"] for s in step_details)
+            + planner_result.duration_seconds
+            + merge_result.duration_seconds,
+            1,
+        ),
+    }
+
+    log_result(decompose_result, task=task, source="decompose")
+
+    return json.dumps(decompose_result, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -191,19 +353,14 @@ async def mux_dispatch(
     profile: str = "",
     reasoning_effort: str = "",
     failover: bool = True,
+    auto_decompose: bool = False,
 ) -> str:
     """Dispatch a task to an AI model CLI and return the result.
 
     Args:
-        provider: Which model to use — "auto" (smart routing based on task
-            and user config, auto-excludes the calling platform), "codex"
-            (code generation, algorithms, debugging), "gemini" (frontend,
-            design, multimodal), "claude" (architecture, reasoning, review),
-            "ollama" (local models via Ollama — use model param to
-            specify which, e.g. "deepseek-r1", "llama3.2", "qwen2.5"),
-            or "dashscope" (Alibaba Cloud Coding Plan models — use model
-            param to specify which, e.g. "qwen3.5-plus", "kimi-k2.5",
-            "glm-5", "MiniMax-M2.5", "qwen3-coder-plus").
+        provider: Which model to use — "auto" (smart routing), "codex",
+            "gemini", "claude", "ollama", "dashscope", or "provider/model"
+            syntax (e.g. "dashscope/kimi-k2.5", "codex/gpt-4.1-mini").
         task: The task description / prompt to send to the model.
         workdir: Working directory for the model to operate in.
         sandbox: Security level — "read-only" (default, safe), "write"
@@ -222,6 +379,9 @@ async def mux_dispatch(
         failover: Auto-retry with another provider on execution error
             (default True). Disabled when session_id is set (sessions
             are provider-specific).
+        auto_decompose: Automatically decompose complex tasks into subtasks,
+            route each to the best-suited provider, and merge results.
+            Uses the selected provider as planner. Default False.
     """
     _ensure_custom_providers_loaded()
 
@@ -236,9 +396,14 @@ async def mux_dispatch(
     profile_name = profile or config.active_profile
     active_prof = config.profiles.get(profile_name)
 
+    # Parse "provider/model" syntax (e.g. "dashscope/kimi-k2.5")
+    base_provider, spec_model = _parse_provider_spec(provider)
+    if spec_model and not model:
+        model = spec_model
+
     # Auto-route if needed
-    actual_provider = provider
-    if provider == "auto":
+    actual_provider = base_provider
+    if base_provider == "auto":
         all_adapters = get_all_adapters()
         available = [
             name
@@ -249,7 +414,12 @@ async def mux_dispatch(
         actual_provider = _auto_route(task, config, available, excluded)
 
     # Warn if explicitly dispatching to self
-    if provider != "auto" and provider in excluded and caller.provider == provider:
+    is_self_dispatch = (
+        base_provider != "auto"
+        and actual_provider in excluded
+        and caller.provider == actual_provider
+    )
+    if is_self_dispatch:
         await ctx.warning(
             f"Dispatching to '{provider}' which appears to be the caller. "
             f"This may cause a self-dispatch loop."
@@ -306,6 +476,25 @@ async def mux_dispatch(
                 },
                 indent=2,
             )
+
+    # ── Auto-decompose: complex task splitting ──
+    if auto_decompose and not session_id:
+        decompose_result = await _auto_decompose_task(
+            task=task,
+            planner_provider=actual_provider,
+            ctx=ctx,
+            resolved_workdir=resolved_workdir,
+            sandbox=sandbox,
+            timeout=timeout,
+            model=model,
+            profile=profile,
+            profile_name=profile_name,
+            active_prof=active_prof,
+            caller=caller,
+            excluded=excluded,
+        )
+        if decompose_result is not None:
+            return decompose_result
 
     # Build extra_args
     extra_args, env_overrides = _build_extra_args(
@@ -451,6 +640,8 @@ async def mux_broadcast(
     Args:
         task: The task description / prompt to send to all models.
         providers: List of providers to use, e.g. ["codex", "gemini"].
+            Supports "provider/model" syntax for per-provider model
+            overrides, e.g. ["dashscope/kimi-k2.5", "dashscope/MiniMax-M2.5"].
             If omitted or empty, auto-selects all available providers
             (excluding the caller platform).
         workdir: Working directory for the models to operate in.
@@ -471,19 +662,23 @@ async def mux_broadcast(
     active_prof = config.profiles.get(profile_name)
 
     # Determine which providers to broadcast to
+    # Supports "provider/model" syntax (e.g. "dashscope/kimi-k2.5")
     all_known = get_all_adapters()
+    provider_specs: list[tuple[str, str, str]] = []  # (display, base_provider, model)
     if providers:
-        target_providers = [p for p in providers if p in all_known]
+        for spec in providers:
+            base, spec_model = _parse_provider_spec(spec)
+            if base in all_known:
+                provider_specs.append((spec, base, spec_model))
     else:
-        target_providers = [
-            name
-            for name, a in all_known.items()
-            if name not in excluded
-            and (
+        for name, a in all_known.items():
+            if name not in excluded and (
                 (isinstance(a, BaseAdapter) and a.check_available())
                 or (not isinstance(a, BaseAdapter) and a().check_available())
-            )
-        ]
+            ):
+                provider_specs.append((name, name, ""))
+
+    target_providers = [display for display, _, _ in provider_specs]
 
     if not target_providers:
         return json.dumps(
@@ -512,28 +707,30 @@ async def mux_broadcast(
         f"{', '.join(target_providers)}..."
     )
 
-    async def _run_one(provider_name: str) -> dict:
-        adapter = _get_adapter(provider_name)
+    async def _run_one(display_name: str, base_provider: str, spec_model: str) -> dict:
+        adapter = _get_adapter(base_provider)
         if not adapter.check_available():
             return {
-                "provider": provider_name,
+                "provider": display_name,
                 "status": "error",
-                "error": f"{provider_name} CLI not available",
+                "error": f"{base_provider} CLI not available",
             }
 
         run_id = str(uuid.uuid4())[:8]
         start_time = time.time()
         status_obj = DispatchStatus(
             run_id=run_id,
-            provider=provider_name,
+            provider=display_name,
             task_summary=task[:200],
             status="running",
             started_at=start_time,
         )
         write_status(status_obj)
 
+        # Per-spec model override takes precedence over global model param
+        effective_model = model or spec_model
         extra_args, env_overrides = _build_extra_args(
-            provider_name, model, profile, "", active_prof
+            base_provider, effective_model, profile, "", active_prof
         )
 
         # Throttled progress for broadcast
@@ -567,7 +764,7 @@ async def mux_broadcast(
         log_dispatch(
             AuditEntry(
                 timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                provider=provider_name,
+                provider=display_name,
                 task_summary=task[:200],
                 status=result.status,
                 duration_seconds=result.duration_seconds,
@@ -584,7 +781,9 @@ async def mux_broadcast(
 
         return result.to_dict()
 
-    results = await asyncio.gather(*[_run_one(p) for p in target_providers])
+    results = await asyncio.gather(
+        *[_run_one(display, base, sm) for display, base, sm in provider_specs]
+    )
 
     broadcast_result: dict = {
         "broadcast": True,

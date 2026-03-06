@@ -35,6 +35,17 @@ PRICING: dict[str, dict[str, tuple[float, float]]] = {
     "ollama": {
         "default": (0.0, 0.0),
     },
+    "dashscope": {
+        "default": (0.0, 0.0),  # Coding Plan: flat-rate subscription
+        "qwen3-coder-plus": (0.0, 0.0),
+        "qwen3-coder-next": (0.0, 0.0),
+        "qwen3.5-plus": (0.0, 0.0),
+        "qwen3-max-2026-01-23": (0.0, 0.0),
+        "kimi-k2.5": (0.0, 0.0),
+        "glm-5": (0.0, 0.0),
+        "glm-4.7": (0.0, 0.0),
+        "MiniMax-M2.5": (0.0, 0.0),
+    },
 }
 
 
@@ -70,7 +81,13 @@ def estimate_cost(
     model: str = "",
 ) -> CostEstimate:
     """Estimate cost based on provider, model, and token counts."""
-    provider_pricing = PRICING.get(provider, {})
+    # Handle "provider/model" format (e.g. "dashscope/qwen3-coder-plus")
+    base_provider = provider
+    if "/" in provider:
+        base_provider, embedded_model = provider.split("/", 1)
+        if not model:
+            model = embedded_model
+    provider_pricing = PRICING.get(base_provider, {})
     if not provider_pricing:
         return CostEstimate(
             model=model,

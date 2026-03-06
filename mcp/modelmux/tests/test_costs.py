@@ -288,3 +288,148 @@ class TestAdapterResultTokenUsage:
         )
         d = result.to_dict()
         assert "token_usage" not in d
+
+
+# ── DashScope token usage + cost estimation ──
+
+
+class TestDashScopeTokenUsage:
+    def test_extracts_usage_from_response(self):
+        """DashScope adapter should extract token usage from OpenAI-compatible response."""
+        import asyncio
+
+        import httpx
+
+        from modelmux.adapters.dashscope import DashScopeAdapter
+
+        adapter = DashScopeAdapter()
+
+        # Mock the httpx response
+        mock_response_data = {
+            "id": "chatcmpl-test",
+            "model": "qwen3-coder-plus",
+            "choices": [
+                {"message": {"role": "assistant", "content": "Hello!"}, "index": 0}
+            ],
+            "usage": {
+                "prompt_tokens": 42,
+                "completion_tokens": 15,
+                "total_tokens": 57,
+            },
+        }
+
+        async def mock_run():
+            # Patch httpx to return mock data
+            original_post = httpx.AsyncClient.post
+
+            async def fake_post(self, url, **kwargs):
+                resp = httpx.Response(
+                    200,
+                    json=mock_response_data,
+                    request=httpx.Request("POST", url),
+                )
+                return resp
+
+            httpx.AsyncClient.post = fake_post
+            try:
+                result = await adapter.run(
+                    prompt="test",
+                    env_overrides={"DASHSCOPE_CODING_API_KEY": "sk-sp-fake"},
+                )
+                return result
+            finally:
+                httpx.AsyncClient.post = original_post
+
+        result = asyncio.run(mock_run())
+        assert result.status == "success"
+        assert result.token_usage is not None
+        assert result.token_usage.input_tokens == 42
+        assert result.token_usage.output_tokens == 15
+        assert result.token_usage.total_tokens == 57
+
+    def test_no_usage_in_response(self):
+        """When API response has no usage field, token_usage should be None."""
+        import asyncio
+
+        import httpx
+
+        from modelmux.adapters.dashscope import DashScopeAdapter
+
+        adapter = DashScopeAdapter()
+
+        mock_response_data = {
+            "model": "qwen3-coder-plus",
+            "choices": [
+                {"message": {"role": "assistant", "content": "Hi"}, "index": 0}
+            ],
+        }
+
+        async def mock_run():
+            original_post = httpx.AsyncClient.post
+
+            async def fake_post(self, url, **kwargs):
+                return httpx.Response(
+                    200,
+                    json=mock_response_data,
+                    request=httpx.Request("POST", url),
+                )
+
+            httpx.AsyncClient.post = fake_post
+            try:
+                return await adapter.run(
+                    prompt="test",
+                    env_overrides={"DASHSCOPE_CODING_API_KEY": "sk-sp-fake"},
+                )
+            finally:
+                httpx.AsyncClient.post = original_post
+
+        result = asyncio.run(mock_run())
+        assert result.status == "success"
+        assert result.token_usage is None
+
+
+class TestDashScopeCostEstimation:
+    def test_dashscope_free_pricing(self):
+        est = estimate_cost("dashscope", 100000, 50000)
+        assert est.total_cost == 0.0
+
+    def test_dashscope_specific_model(self):
+        est = estimate_cost("dashscope", 100000, 50000, model="kimi-k2.5")
+        assert est.total_cost == 0.0
+
+    def test_provider_slash_model_format(self):
+        """estimate_cost should handle 'provider/model' format."""
+        est = estimate_cost("dashscope/qwen3-coder-plus", 1_000_000, 1_000_000)
+        assert est.total_cost == 0.0
+        assert est.model == "qwen3-coder-plus"
+
+    def test_provider_slash_model_with_explicit_model(self):
+        """Explicit model param takes precedence over embedded model."""
+        est = estimate_cost(
+            "codex/gpt-4.1", 1_000_000, 1_000_000, model="gpt-4.1-mini"
+        )
+        # Should use gpt-4.1-mini pricing, not gpt-4.1
+        assert est.input_cost == 0.4
+
+    def test_aggregate_with_dashscope_entries(self):
+        entries = [
+            {
+                "provider": "dashscope/qwen3-coder-plus",
+                "token_usage": {
+                    "input_tokens": 5000,
+                    "output_tokens": 2000,
+                },
+            },
+            {
+                "provider": "dashscope/kimi-k2.5",
+                "token_usage": {
+                    "input_tokens": 3000,
+                    "output_tokens": 1000,
+                },
+            },
+        ]
+        result = aggregate_costs(entries)
+        assert result["entries_with_usage"] == 2
+        assert result["total_input_tokens"] == 8000
+        assert result["total_output_tokens"] == 3000
+        assert result["total_cost_usd"] == 0.0

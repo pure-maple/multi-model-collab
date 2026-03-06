@@ -349,11 +349,20 @@ async def mux_dispatch(
     )
     write_status(dispatch_status)
 
-    # Progress callback via MCP context
+    # Throttled progress callback — writes status at most every 0.5s
+    _last_status_write = [0.0]
+    _line_count = [0]
+    STATUS_WRITE_INTERVAL = 0.5
+
     def on_progress(msg: str) -> None:
+        _line_count[0] += 1
         dispatch_status.output_preview = msg[:200]
+        dispatch_status.output_lines = _line_count[0]
         dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
-        write_status(dispatch_status)
+        now = time.time()
+        if now - _last_status_write[0] >= STATUS_WRITE_INTERVAL:
+            _last_status_write[0] = now
+            write_status(dispatch_status)
 
     await ctx.info(f"Dispatching to {actual_provider}...")
 
@@ -547,6 +556,20 @@ async def mux_broadcast(
             provider_name, model, profile, "", active_prof
         )
 
+        # Throttled progress for broadcast
+        last_write = [0.0]
+        line_count = [0]
+
+        def on_prog(msg: str) -> None:
+            line_count[0] += 1
+            status_obj.output_preview = msg[:200]
+            status_obj.output_lines = line_count[0]
+            status_obj.elapsed_seconds = round(time.time() - start_time, 1)
+            now = time.time()
+            if now - last_write[0] >= 0.5:
+                last_write[0] = now
+                write_status(status_obj)
+
         result = await adapter.run(
             prompt=task,
             workdir=resolved_workdir,
@@ -555,6 +578,7 @@ async def mux_broadcast(
             timeout=timeout,
             extra_args=extra_args if extra_args else None,
             env_overrides=env_overrides if env_overrides else None,
+            on_progress=on_prog,
         )
 
         remove_status(run_id)
@@ -742,6 +766,20 @@ async def mux_workflow(
         if step.model:
             extra_args["model"] = step.model
 
+        # Throttled progress for workflow steps
+        wf_last_write = [0.0]
+        wf_line_count = [0]
+
+        def wf_on_prog(msg: str) -> None:
+            wf_line_count[0] += 1
+            status_obj.output_preview = msg[:200]
+            status_obj.output_lines = wf_line_count[0]
+            status_obj.elapsed_seconds = round(time.time() - start_time, 1)
+            now = time.time()
+            if now - wf_last_write[0] >= 0.5:
+                wf_last_write[0] = now
+                write_status(status_obj)
+
         result = await adapter.run(
             prompt=rendered_task,
             workdir=resolved_workdir,
@@ -749,6 +787,7 @@ async def mux_workflow(
             session_id="",
             timeout=step.timeout,
             extra_args=extra_args if extra_args else None,
+            on_progress=wf_on_prog,
         )
 
         remove_status(run_id)

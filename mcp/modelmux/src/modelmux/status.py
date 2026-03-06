@@ -30,6 +30,7 @@ class DispatchStatus:
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
     output_preview: str = ""
+    output_lines: int = 0
     error: str = ""
     failover_from: str = ""
 

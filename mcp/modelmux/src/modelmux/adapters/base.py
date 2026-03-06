@@ -200,6 +200,7 @@ class BaseAdapter:
 
         lines: list[str] = []
         exit_code = 0
+        line_count = 0
         try:
             gen = stream_subprocess(
                 cmd,
@@ -209,6 +210,9 @@ class BaseAdapter:
             )
             for line in gen:
                 lines.append(line)
+                line_count += 1
+                if on_progress:
+                    on_progress(line)
             # Get the return value (exit code) from the generator
             try:
                 next(gen)

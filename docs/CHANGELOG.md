@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.0 (2026-03-06)
+- **流式输出**: 所有 MCP 工具（dispatch/broadcast/workflow）支持逐行流式进度更新
+- on_progress 回调逐行触发，实时更新 status 文件中的 output_preview 和 output_lines
+- 节流写入（0.5s 间隔），避免高频 I/O 影响性能
+- DispatchStatus 新增 output_lines 字段，可跟踪输出行数
+
 ## v0.15.0 (2026-03-06)
 - **自定义 Provider 插件**: 用户可在 profiles.toml 的 `[providers.*]` 中注册任意 CLI 工具
 - GenericAdapter: 通过 command + args 模板（{task}, {workdir}）驱动任意命令行工具

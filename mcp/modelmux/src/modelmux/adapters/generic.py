@@ -46,9 +46,7 @@ class GenericAdapter(BaseAdapter):
             "session_id": session_id,
         }
         if extra_args:
-            substitutions.update(
-                {k: str(v) for k, v in extra_args.items()}
-            )
+            substitutions.update({k: str(v) for k, v in extra_args.items()})
 
         args = []
         for arg in self._args_template:

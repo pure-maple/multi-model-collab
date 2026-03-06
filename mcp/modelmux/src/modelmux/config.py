@@ -208,8 +208,25 @@ def _parse_routing_rule(data: dict[str, Any]) -> RoutingRule:
     )
 
 
+_KNOWN_TOP_KEYS = {
+    "active_profile", "routing", "disabled_providers",
+    "caller_override", "auto_exclude_caller", "profiles",
+    "providers", "notifications", "workflows",
+}
+
+
 def _parse_config(data: dict[str, Any]) -> MuxConfig:
     """Parse raw config dict into structured MuxConfig."""
+    # Warn about unknown top-level keys (likely typos)
+    unknown = set(data.keys()) - _KNOWN_TOP_KEYS
+    if unknown:
+        logger.warning(
+            "Unknown config keys (possible typo): %s. "
+            "Valid keys: %s",
+            ", ".join(sorted(unknown)),
+            ", ".join(sorted(_KNOWN_TOP_KEYS)),
+        )
+
     config = MuxConfig()
     config.active_profile = data.get("active_profile", "default")
     config.default_provider = data.get("routing", {}).get("default_provider", "codex")

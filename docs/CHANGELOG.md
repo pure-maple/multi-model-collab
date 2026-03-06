@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.13.0 (2026-03-06)
+- **mux_workflow**: 新增工作流模板引擎，多步流水线编排
+- 内置工作流: `review`（codex 实现 → claude 审查）、`consensus`（多模型共识合成）
+- 用户自定义工作流: profiles.toml 的 `[workflows.*]` 配置
+- 步骤间通过 `{step_name}` 占位符传递输出
+- `list_workflows=True` 查看所有可用工作流
+
 ## v0.12.0 (2026-03-06)
 - **mux_history**: 新增 MCP 工具，支持按 provider/状态/时间范围查询分发历史
 - **history.jsonl**: 完整分发结果持久化存储，自动轮转（10MB 上限）

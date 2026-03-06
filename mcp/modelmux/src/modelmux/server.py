@@ -18,7 +18,12 @@ from typing import Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from modelmux.adapters import ADAPTERS, BaseAdapter
+from modelmux.adapters import (
+    ADAPTERS,
+    BaseAdapter,
+    get_all_adapters,
+    load_custom_providers,
+)
 from modelmux.audit import AuditEntry, count_recent, get_audit_stats, log_dispatch
 from modelmux.compare import compare_results
 from modelmux.config import (
@@ -108,13 +113,40 @@ def _auto_route(task: str, config: MuxConfig) -> str:
 
 def _get_adapter(provider: str) -> BaseAdapter:
     if provider not in _adapter_cache:
-        cls = ADAPTERS.get(provider)
-        if cls is None:
+        all_adapters = get_all_adapters()
+        adapter_or_cls = all_adapters.get(provider)
+        if adapter_or_cls is None:
             raise ValueError(
-                f"Unknown provider: {provider}. Available: {', '.join(ADAPTERS.keys())}"
+                f"Unknown provider: {provider}. "
+                f"Available: {', '.join(all_adapters.keys())}"
             )
-        _adapter_cache[provider] = cls()
+        # Generic instances returned directly; built-in classes instantiated
+        if isinstance(adapter_or_cls, BaseAdapter):
+            _adapter_cache[provider] = adapter_or_cls
+        else:
+            _adapter_cache[provider] = adapter_or_cls()
     return _adapter_cache[provider]
+
+
+def _ensure_custom_providers_loaded() -> None:
+    """Load custom providers from user/project config (once)."""
+    if getattr(_ensure_custom_providers_loaded, "_done", False):
+        return
+    _ensure_custom_providers_loaded._done = True  # type: ignore[attr-defined]
+
+    from modelmux.config import _find_config_file, _load_file
+
+    for cfg_dir in [
+        Path.home() / ".config" / "modelmux",
+        Path.cwd() / ".modelmux",
+    ]:
+        cfg_file = _find_config_file(cfg_dir)
+        if cfg_file:
+            try:
+                raw = _load_file(cfg_file)
+                load_custom_providers(raw)
+            except Exception:
+                pass
 
 
 def _detect_and_build_exclusions(
@@ -179,7 +211,7 @@ def _get_fallback_candidates(
 
 @mcp.tool()
 async def mux_dispatch(
-    provider: Literal["auto", "codex", "gemini", "claude", "ollama"],
+    provider: str,
     task: str,
     ctx: Context,
     workdir: str = ".",
@@ -219,6 +251,8 @@ async def mux_dispatch(
             (default True). Disabled when session_id is set (sessions
             are provider-specific).
     """
+    _ensure_custom_providers_loaded()
+
     # Load user configuration
     resolved_workdir = str(Path(workdir).resolve())
     config = load_config(resolved_workdir)
@@ -443,6 +477,8 @@ async def mux_broadcast(
         compare: Add structured comparison analysis (similarity scores,
             speed ranking, unique terms per provider). Default False.
     """
+    _ensure_custom_providers_loaded()
+
     resolved_workdir = str(Path(workdir).resolve())
     config = load_config(resolved_workdir)
     caller, excluded = _detect_and_build_exclusions(ctx, config)
@@ -764,17 +800,26 @@ async def mux_check(ctx: Context) -> str:
     Returns availability status for codex, gemini, and claude CLIs,
     the active profile, detected caller platform, and excluded providers.
     """
+    _ensure_custom_providers_loaded()
+
     config = load_config(".")
     caller, excluded = _detect_and_build_exclusions(ctx, config)
 
+    all_adapters = get_all_adapters()
     status: dict = {}
-    for name, cls in ADAPTERS.items():
-        adapter = cls()
-        status[name] = {
+    for name, adapter_or_cls in all_adapters.items():
+        if isinstance(adapter_or_cls, BaseAdapter):
+            adapter = adapter_or_cls
+        else:
+            adapter = adapter_or_cls()
+        info: dict = {
             "available": adapter.check_available(),
             "binary": adapter._binary_name(),
             "excluded": name in excluded,
         }
+        if name not in ADAPTERS:
+            info["custom"] = True
+        status[name] = info
 
     status["_caller"] = {
         "client_name": caller.client_name,

@@ -1,6 +1,6 @@
 """Audit logging for modelmux dispatch calls.
 
-Every collab_dispatch call is recorded as a JSONL entry in:
+Every mux_dispatch call is recorded as a JSONL entry in:
   ~/.config/modelmux/audit.jsonl
 
 This provides a tamper-evident trail for debugging, cost tracking,

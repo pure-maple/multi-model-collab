@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 # Add src to path for direct execution
 sys.path.insert(0, "src")
 
-from modelmux.server import collab_dispatch, collab_check
+from modelmux.server import mux_dispatch, mux_check
 
 
 def make_mock_ctx(client_name: str = "test-runner", version: str = "1.0"):
@@ -27,14 +27,14 @@ def make_mock_ctx(client_name: str = "test-runner", version: str = "1.0"):
     return ctx
 
 
-async def test_collab_check():
-    """Test that collab_check returns adapter availability and caller info."""
+async def test_mux_check():
+    """Test that mux_check returns adapter availability and caller info."""
     print("=" * 60)
-    print("TEST: collab_check")
+    print("TEST: mux_check")
     print("=" * 60)
 
     ctx = make_mock_ctx("claude-code", "1.0.30")
-    result = json.loads(await collab_check(ctx=ctx))
+    result = json.loads(await mux_check(ctx=ctx))
     print(json.dumps(result, indent=2))
 
     assert "codex" in result, "Missing codex in check result"
@@ -62,12 +62,12 @@ async def test_collab_check():
 async def test_dispatch_simple(provider: str):
     """Test simple dispatch to a single provider."""
     print(f"\n{'=' * 60}")
-    print(f"TEST: collab_dispatch ({provider}) - simple math")
+    print(f"TEST: mux_dispatch ({provider}) - simple math")
     print("=" * 60)
 
     ctx = make_mock_ctx("test-runner")
     start = time.monotonic()
-    raw = await collab_dispatch(
+    raw = await mux_dispatch(
         provider=provider,
         task="What is 7 * 8? Reply with ONLY the number, nothing else.",
         ctx=ctx,
@@ -92,7 +92,7 @@ async def test_dispatch_simple(provider: str):
 async def test_dispatch_code_review():
     """Test a real code review task dispatched to Codex."""
     print(f"\n{'=' * 60}")
-    print("TEST: collab_dispatch (codex) - code review")
+    print("TEST: mux_dispatch (codex) - code review")
     print("=" * 60)
 
     code = '''
@@ -111,7 +111,7 @@ def merge(left, right):
 '''
 
     ctx = make_mock_ctx("test-runner")
-    raw = await collab_dispatch(
+    raw = await mux_dispatch(
         provider="codex",
         task=f"Review this merge function for bugs. Be concise:\n```python\n{code}\n```",
         ctx=ctx,
@@ -142,7 +142,7 @@ async def test_session_continuity():
     ctx = make_mock_ctx("test-runner")
 
     # Turn 1
-    raw1 = await collab_dispatch(
+    raw1 = await mux_dispatch(
         provider="codex",
         task="Remember the number 42. Just confirm you remember it.",
         ctx=ctx,
@@ -155,7 +155,7 @@ async def test_session_continuity():
     assert r1["session_id"], "No session_id returned"
 
     # Turn 2 - resume session
-    raw2 = await collab_dispatch(
+    raw2 = await mux_dispatch(
         provider="codex",
         task="What number did I ask you to remember? Reply with just the number.",
         ctx=ctx,
@@ -182,14 +182,14 @@ async def test_parallel_dispatch():
 
     ctx = make_mock_ctx("test-runner")
     start = time.monotonic()
-    codex_task = collab_dispatch(
+    codex_task = mux_dispatch(
         provider="codex",
         task="Write a Python one-liner that reverses a string. Reply with ONLY the code.",
         ctx=ctx,
         workdir="/tmp",
         timeout=60,
     )
-    gemini_task = collab_dispatch(
+    gemini_task = mux_dispatch(
         provider="gemini",
         task="Write a Python one-liner that reverses a string. Reply with ONLY the code.",
         ctx=ctx,
@@ -221,7 +221,7 @@ async def test_auto_routing_exclusion():
 
     # Simulate Claude Code calling with a task that would route to claude
     ctx = make_mock_ctx("claude-code", "1.0.30")
-    raw = await collab_dispatch(
+    raw = await mux_dispatch(
         provider="auto",
         task="Review and analyze this architecture for security threats",
         ctx=ctx,
@@ -249,9 +249,9 @@ async def main():
     print("=" * 60)
 
     # Check availability first
-    check = await test_collab_check()
+    check = await test_mux_check()
     ctx = make_mock_ctx("test-runner")
-    check_result = json.loads(await collab_check(ctx=ctx))
+    check_result = json.loads(await mux_check(ctx=ctx))
     available = {
         k: v.get("available", False)
         for k, v in check_result.items()

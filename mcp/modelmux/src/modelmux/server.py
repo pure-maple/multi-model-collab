@@ -28,7 +28,7 @@ from modelmux.policy import check_policy, load_policy
 mcp = FastMCP(
     "modelmux",
     instructions=(
-        "modelmux — model multiplexer. Use collab_dispatch to send "
+        "modelmux — model multiplexer. Use mux_dispatch to send "
         "tasks to different AI models (codex, gemini, claude) and receive "
         "structured results. Use provider='auto' for smart routing. "
         "Supports profiles for third-party model configuration and "
@@ -126,7 +126,7 @@ def _detect_and_build_exclusions(
 
 
 @mcp.tool()
-async def collab_dispatch(
+async def mux_dispatch(
     provider: Literal["auto", "codex", "gemini", "claude"],
     task: str,
     ctx: Context,
@@ -309,7 +309,7 @@ async def collab_dispatch(
 
 
 @mcp.tool()
-async def collab_check(ctx: Context) -> str:
+async def mux_check(ctx: Context) -> str:
     """Check which model CLIs are available and show active configuration.
 
     Returns availability status for codex, gemini, and claude CLIs,

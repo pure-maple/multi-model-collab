@@ -22,8 +22,8 @@
 任意 MCP 客户端（Claude Code / Codex CLI / Gemini CLI / IDE）
     │
     └── modelmux（统一 MCP 服务器）
-        ├── collab_dispatch(provider, task, ...) → 标准化结果
-        └── collab_check() → 可用性检查
+        ├── mux_dispatch(provider, task, ...) → 标准化结果
+        └── mux_check() → 可用性检查
             │
             ├── CodexAdapter  → codex exec --json
             ├── GeminiAdapter → gemini -p -o stream-json
@@ -83,10 +83,10 @@ args = ["modelmux"]
 
 ```python
 # 检查可用模型
-collab_check()
+mux_check()
 
 # 分发任务给 Codex
-collab_dispatch(
+mux_dispatch(
     provider="codex",
     task="用 Python 实现一个二叉搜索树",
     workdir="/path/to/project",
@@ -94,7 +94,7 @@ collab_dispatch(
 )
 
 # 分发任务给 Gemini
-collab_dispatch(
+mux_dispatch(
     provider="gemini",
     task="设计一个响应式仪表盘布局",
     workdir="/path/to/project"
@@ -107,7 +107,7 @@ collab_dispatch(
 
 ```python
 # 自动路由：算法任务 → Codex，前端任务 → Gemini，架构任务 → Claude
-collab_dispatch(
+mux_dispatch(
     provider="auto",
     task="实现一个 LRU 缓存",    # 自动路由到 Codex
     workdir="/path/to/project"
@@ -118,7 +118,7 @@ collab_dispatch(
 
 ```python
 # 从 Claude Code 调用 → 自动路由到 Codex 或 Gemini（永远不会回到 Claude）
-collab_dispatch(provider="auto", task="审查这段代码的安全性")
+mux_dispatch(provider="auto", task="审查这段代码的安全性")
 # 任务关键词匹配到 claude，但 claude 是调用方 → 重定向到 codex
 ```
 
@@ -178,16 +178,16 @@ model = "deepseek-coder"
 
 ```python
 # 指定 Codex 使用 gpt-5.4
-collab_dispatch(provider="codex", model="gpt-5.4", task="...")
+mux_dispatch(provider="codex", model="gpt-5.4", task="...")
 
 # 指定 Gemini 使用特定模型
-collab_dispatch(provider="gemini", model="gemini-2.5-pro", task="...")
+mux_dispatch(provider="gemini", model="gemini-2.5-pro", task="...")
 
 # 指定 Claude 使用特定模型
-collab_dispatch(provider="claude", model="claude-sonnet-4-6", task="...")
+mux_dispatch(provider="claude", model="claude-sonnet-4-6", task="...")
 
 # Codex 专属参数：配置文件 profile + 推理深度
-collab_dispatch(
+mux_dispatch(
     provider="codex",
     profile="fast",
     reasoning_effort="xhigh",
@@ -202,9 +202,9 @@ collab_dispatch(
 通过 `session_id` 保持会话连续性：
 
 ```python
-r1 = collab_dispatch(provider="codex", task="分析这个代码库")
+r1 = mux_dispatch(provider="codex", task="分析这个代码库")
 # 继续同一会话
-r2 = collab_dispatch(provider="codex", task="修复你发现的 bug",
+r2 = mux_dispatch(provider="codex", task="修复你发现的 bug",
                      session_id=r1.session_id)
 ```
 
@@ -214,23 +214,23 @@ r2 = collab_dispatch(provider="codex", task="修复你发现的 bug",
 
 ```python
 # 并行分发
-result_codex = collab_dispatch(provider="codex", task="实现 API 端点")
-result_gemini = collab_dispatch(provider="gemini", task="构建 React 组件")
+result_codex = mux_dispatch(provider="codex", task="实现 API 端点")
+result_gemini = mux_dispatch(provider="gemini", task="构建 React 组件")
 # 综合两个结果
 ```
 
 **顺序流水线** — 链式调用：
 
 ```python
-code = collab_dispatch(provider="codex", task="实现二分搜索")
-review = collab_dispatch(provider="gemini", task=f"审查这段代码:\n{code}")
+code = mux_dispatch(provider="codex", task="实现二分搜索")
+review = mux_dispatch(provider="gemini", task=f"审查这段代码:\n{code}")
 ```
 
 **共识/双重审批** — 同一任务交给多个模型，对比结果：
 
 ```python
-review_a = collab_dispatch(provider="codex", task=f"审查:\n{code}")
-review_b = collab_dispatch(provider="gemini", task=f"审查:\n{code}")
+review_a = mux_dispatch(provider="codex", task=f"审查:\n{code}")
+review_b = mux_dispatch(provider="gemini", task=f"审查:\n{code}")
 # 对比并合并发现
 ```
 
@@ -254,7 +254,7 @@ cp SKILL.md .gemini/skills/modelmux/SKILL.md
 
 ## 审计日志与策略引擎
 
-每次 `collab_dispatch` 调用都会记录到 `~/.config/modelmux/audit.jsonl`（JSONL 格式），用于调试、成本追踪和速率限制。
+每次 `mux_dispatch` 调用都会记录到 `~/.config/modelmux/audit.jsonl`（JSONL 格式），用于调试、成本追踪和速率限制。
 
 ### 策略引擎
 
@@ -282,7 +282,7 @@ cp SKILL.md .gemini/skills/modelmux/SKILL.md
 
 被策略拦截的请求返回 `{"status": "blocked", "error": "Policy denied: ..."}`。
 
-`collab_check()` 的输出现已包含策略摘要和审计统计信息。
+`mux_check()` 的输出现已包含策略摘要和审计统计信息。
 
 ## 输出格式
 
@@ -325,7 +325,7 @@ modelmux/
 │   ├── pyproject.toml              # Python 包配置
 │   ├── README.md
 │   └── src/modelmux/
-│       ├── server.py               # MCP 工具：collab_dispatch, collab_check
+│       ├── server.py               # MCP 工具：mux_dispatch, mux_check
 │       ├── config.py               # 用户偏好、路由规则、配置加载
 │       ├── detect.py               # 调用方平台检测与自动排除
 │       ├── audit.py                # JSONL 审计日志与统计
@@ -369,7 +369,7 @@ multi_agent = true
 fast_mode = true
 ```
 
-以上配置在通过 `collab_dispatch(provider="codex", ...)` 调用时全部自动继承，无需额外设置。
+以上配置在通过 `mux_dispatch(provider="codex", ...)` 调用时全部自动继承，无需额外设置。
 
 ### Gemini（`~/.gemini/settings.json`）
 

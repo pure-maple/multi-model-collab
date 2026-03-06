@@ -44,7 +44,7 @@ jobs:
       - name: Import verification
         run: |
           uv run python -c "
-          from modelmux.server import mcp, collab_dispatch, collab_check
+          from modelmux.server import mcp, mux_dispatch, mux_check
           from modelmux.config import MuxConfig, load_config
           from modelmux.detect import detect_caller, CallerInfo
           print('All imports OK')

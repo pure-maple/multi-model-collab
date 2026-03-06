@@ -403,3 +403,72 @@ def test_benchmark_cache_avoids_reread():
     finally:
         if path.exists():
             path.unlink()
+
+
+# --- Routing v4: four-signal and three-signal weight paths ---
+
+
+def test_smart_route_full_four_signal():
+    """With 5+ history, benchmark, AND feedback data, uses 35/25/20/20 weights."""
+    mock_stats = {
+        "codex": {"calls": 10, "success": 9, "total_duration": 50.0},
+        "gemini": {"calls": 10, "success": 5, "total_duration": 100.0},
+    }
+    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+        with mock.patch(
+            "modelmux.routing.benchmark_scores",
+            return_value={"codex": 0.9, "gemini": 0.3},
+        ):
+            with mock.patch(
+                "modelmux.feedback.feedback_scores",
+                return_value={"codex": 0.8, "gemini": 0.4},
+            ):
+                best, scores = smart_route(
+                    "review this security code",
+                    available_providers=["codex", "gemini"],
+                )
+                # codex wins across all signals
+                assert scores["codex"].composite > scores["gemini"].composite
+                assert best == "codex"
+                # Verify all signal scores are populated
+                assert scores["codex"].benchmark_score == 0.9
+                assert scores["codex"].feedback_score == 0.8
+
+
+def test_smart_route_three_signal_no_feedback():
+    """With 5+ history + benchmark but no feedback, uses 40/30/30/0 weights."""
+    mock_stats = {
+        "codex": {"calls": 8, "success": 7, "total_duration": 40.0},
+        "gemini": {"calls": 8, "success": 3, "total_duration": 80.0},
+    }
+    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+        with mock.patch(
+            "modelmux.routing.benchmark_scores",
+            return_value={"codex": 0.8, "gemini": 0.3},
+        ):
+            with mock.patch(
+                "modelmux.feedback.feedback_scores",
+                return_value={"codex": 0.5, "gemini": 0.5},
+            ):
+                _, scores = smart_route(
+                    "implement something",
+                    available_providers=["codex", "gemini"],
+                )
+                # Feedback is neutral (0.5) → three-signal path
+                assert scores["codex"].feedback_score == 0.5
+
+
+def test_smart_route_history_with_partial_signals():
+    """With 2-4 history calls, uses partial signal weights."""
+    mock_stats = {
+        "codex": {"calls": 3, "success": 3, "total_duration": 15.0},
+        "gemini": {"calls": 3, "success": 1, "total_duration": 30.0},
+    }
+    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+        _, scores = smart_route(
+            "hello world",
+            available_providers=["codex", "gemini"],
+        )
+        # Both have 3 calls (>= 2) → history-available path
+        assert scores["codex"].history_calls == 3
+        assert scores["codex"].success_rate > scores["gemini"].success_rate

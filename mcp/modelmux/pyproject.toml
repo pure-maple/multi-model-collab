@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "modelmux"
-version = "0.9.0"
+version = "0.10.0"
 description = "Model multiplexer — unified MCP server for cross-platform multi-model AI collaboration"
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,9 @@ dependencies = [
     "mcp[cli]>=1.20.0",
     "pydantic>=2.0",
 ]
+
+[project.optional-dependencies]
+tui = ["textual>=1.0.0"]
 
 [dependency-groups]
 dev = [

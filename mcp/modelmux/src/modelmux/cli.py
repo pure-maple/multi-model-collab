@@ -3,6 +3,7 @@
 Usage:
   modelmux           Start the MCP server (stdio transport)
   modelmux init      Interactive configuration wizard
+  modelmux config    TUI configuration panel (requires modelmux[tui])
   modelmux check     Quick CLI availability check
   modelmux status    Monitor active dispatches in real-time
   modelmux version   Show version
@@ -25,6 +26,22 @@ def _cmd_init(args: argparse.Namespace) -> None:
 
     scope = getattr(args, "scope", "user")
     run_wizard(scope=scope)
+
+
+def _cmd_config(args: argparse.Namespace) -> None:
+    """Launch the TUI configuration panel."""
+    try:
+        from modelmux.tui import run_tui
+    except ImportError:
+        print(
+            "TUI requires the 'textual' package.\n"
+            "Install with: pip install modelmux[tui]\n"
+            "Or run:       uvx --with textual modelmux config"
+        )
+        sys.exit(1)
+
+    scope = getattr(args, "scope", "user")
+    run_tui(scope=scope)
 
 
 def _cmd_check() -> None:
@@ -121,6 +138,15 @@ def main() -> None:
         help="Config scope: user/project/auto",
     )
 
+    # modelmux config
+    config_p = subparsers.add_parser("config", help="TUI configuration panel")
+    config_p.add_argument(
+        "--scope",
+        choices=["user", "project"],
+        default="user",
+        help="Config scope: user (~/.config/modelmux) or project (.modelmux/)",
+    )
+
     # modelmux check
     subparsers.add_parser("check", help="Check which model CLIs are available")
 
@@ -142,6 +168,8 @@ def main() -> None:
         _cmd_server()
     elif args.command == "init":
         _cmd_init(args)
+    elif args.command == "config":
+        _cmd_config(args)
     elif args.command == "check":
         _cmd_check()
     elif args.command == "status":

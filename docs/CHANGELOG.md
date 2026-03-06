@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.15.0 (2026-03-06)
+- **自定义 Provider 插件**: 用户可在 profiles.toml 的 `[providers.*]` 中注册任意 CLI 工具
+- GenericAdapter: 通过 command + args 模板（{task}, {workdir}）驱动任意命令行工具
+- mux_dispatch 现接受任意 provider 名称，不限于内置的 4 个
+- mux_check 中自定义 provider 标记 `custom: true`
+
+## v0.14.0 (2026-03-06)
+- **结果对比**: mux_broadcast 新增 `compare=True` 参数
+- Jaccard 相似度分析、速度排名、各 provider 独有术语
+- 共识分数 (agreement_score) 量化多模型一致性
+
 ## v0.13.0 (2026-03-06)
 - **mux_workflow**: 新增工作流模板引擎，多步流水线编排
 - 内置工作流: `review`（codex 实现 → claude 审查）、`consensus`（多模型共识合成）

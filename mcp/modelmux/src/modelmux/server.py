@@ -20,6 +20,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from modelmux.adapters import ADAPTERS, BaseAdapter
 from modelmux.audit import AuditEntry, count_recent, get_audit_stats, log_dispatch
+from modelmux.compare import compare_results
 from modelmux.config import (
     MuxConfig,
     load_config,
@@ -421,6 +422,7 @@ async def mux_broadcast(
     timeout: int = 300,
     model: str = "",
     profile: str = "",
+    compare: bool = False,
 ) -> str:
     """Broadcast a task to multiple AI models in parallel and return all results.
 
@@ -438,6 +440,8 @@ async def mux_broadcast(
         timeout: Maximum seconds to wait per provider (default 300).
         model: Override model version for all providers.
         profile: Named profile from user config.
+        compare: Add structured comparison analysis (similarity scores,
+            speed ranking, unique terms per provider). Default False.
     """
     resolved_workdir = str(Path(workdir).resolve())
     config = load_config(resolved_workdir)
@@ -542,7 +546,7 @@ async def mux_broadcast(
 
     results = await asyncio.gather(*[_run_one(p) for p in target_providers])
 
-    broadcast_result = {
+    broadcast_result: dict = {
         "broadcast": True,
         "providers": target_providers,
         "results": list(results),
@@ -552,6 +556,9 @@ async def mux_broadcast(
             "error": sum(1 for r in results if r["status"] != "success"),
         },
     }
+
+    if compare:
+        broadcast_result["comparison"] = compare_results(list(results))
 
     # History (full broadcast result)
     log_result(broadcast_result, task=task, source="broadcast")

@@ -1,6 +1,6 @@
 # modelmux 功能规划
 
-## 当前状态 (v0.22.0)
+## 当前状态 (v0.23.0)
 
 ### MCP 工具
 | 工具 | 功能 |
@@ -69,15 +69,15 @@ codex / gemini / claude / ollama / dashscope / 自定义插件
 ## 近期规划 (P1)
 
 ### Web Dashboard (modelmux-dashboard)
-- [ ] FastAPI 后端 (status/history/providers/costs API)
-- [ ] 轻量前端（实时监控面板）
-- [ ] 历史图表、provider 健康状态
+- [x] Starlette REST API (status/history/stats/providers/costs)
+- [x] 内嵌暗色主题 HTML 面板（5s 自动刷新）
+- [x] `modelmux dashboard` 启动本地 Web 服务
+- [ ] 历史趋势图表（Chart.js）
 - [ ] A2A 协作可视化（轮次、收敛过程）
-- [ ] `modelmux dashboard` 启动本地 Web 服务
 
 ### 生态集成
-- [ ] Webhook 通知（Slack/Discord webhook）
-- [ ] 基准测试套件 (`modelmux benchmark`)
+- [x] Webhook 通知（Slack/Discord/通用 webhook）
+- [x] 基准测试套件 (`modelmux benchmark`)
 - [ ] 导出/报告功能
 - [ ] VS Code 扩展
 
@@ -95,4 +95,4 @@ codex / gemini / claude / ollama / dashscope / 自定义插件
 
 ---
 
-*最后更新: 2026-03-07 (v0.22.0)*
+*最后更新: 2026-03-07 (v0.23.0)*

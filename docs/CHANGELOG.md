@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.23.0 (2026-03-07)
+- **Web Dashboard**: `modelmux dashboard` 启动本地 Web 监控面板
+  - Starlette REST API: /api/status, /api/history, /api/stats, /api/providers, /api/costs
+  - 内嵌暗色主题 HTML 面板，5 秒自动刷新
+  - 活跃分发表、provider 健康状态、统计概览、费用汇总、历史记录
+- **Webhook 通知**: 分发完成时推送到 Slack/Discord/Generic webhook
+  - 自动检测 URL 格式（Slack blocks、Discord embeds、通用 JSON）
+  - profiles.toml `[notifications]` 配置或 `MODELMUX_WEBHOOK_URL` 环境变量
+  - 事件过滤（仅 success/error 等）、后台线程非阻塞
+  - 集成到 `log_result`，所有分发源自动触发
+- **基准测试套件**: `modelmux benchmark` 标准化 provider 对比评测
+  - 5 个内置任务：code_review、code_generation、reasoning、summarization、translation
+  - 关键词匹配质量评分
+  - 按 provider 汇总：成功率、平均延迟、关键词命中率
+  - JSON 导出（--output）、任务过滤（--tasks）、--list-tasks
+- 44 个新测试（14 dashboard + 16 notifications + 14 benchmark），总计 268 个测试通过
+
 ## v0.22.0 (2026-03-07)
 - **Task Decomposition**: `mux_dispatch(auto_decompose=True)` 自动拆解复杂任务
   - 三阶段流程：planner 分析 → wave executor 并行/顺序执行 → merger 合并结果

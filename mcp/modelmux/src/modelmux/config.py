@@ -11,11 +11,14 @@ Config format is auto-detected by file extension.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Supported config file names (checked in order)
 _CONFIG_NAMES = [
@@ -273,7 +276,7 @@ def load_config(workdir: str = ".") -> MuxConfig:
             user_data = _load_file(user_file)
             config = _merge_configs(config, _parse_config(user_data))
         except Exception:
-            pass  # Silently skip invalid user config
+            logger.warning("Failed to parse user config %s", user_file, exc_info=True)
 
     # Project-level config
     project_dir = Path(workdir).resolve() / ".modelmux"
@@ -283,7 +286,7 @@ def load_config(workdir: str = ".") -> MuxConfig:
             project_data = _load_file(project_file)
             config = _merge_configs(config, _parse_config(project_data))
         except Exception:
-            pass  # Silently skip invalid project config
+            logger.warning("Failed to parse project config %s", project_file, exc_info=True)
 
     return config
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -45,6 +46,7 @@ from modelmux.routing import smart_route
 from modelmux.status import DispatchStatus, list_active, remove_status, write_status
 
 setup_logging()
+logger = logging.getLogger(__name__)
 from modelmux.workflow import (
     BUILTIN_WORKFLOWS,
     Workflow,
@@ -123,7 +125,7 @@ def _ensure_custom_providers_loaded() -> None:
                 raw = _load_file(cfg_file)
                 load_custom_providers(raw)
             except Exception:
-                pass
+                logger.warning("Failed to load custom providers from %s", cfg_file, exc_info=True)
 
 
 def _detect_and_build_exclusions(
@@ -979,7 +981,7 @@ async def mux_workflow(
                 raw = _load_file(cfg_file)
                 user_workflows.update(parse_workflows(raw))
             except Exception:
-                pass
+                logger.warning("Failed to load workflows from %s", cfg_file, exc_info=True)
 
     all_workflows = {**BUILTIN_WORKFLOWS, **user_workflows}
 

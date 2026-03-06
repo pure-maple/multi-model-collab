@@ -57,7 +57,7 @@ def load_notification_config() -> NotificationConfig:
                         format=notif.get("format", ""),
                     )
     except Exception:
-        pass
+        logger.debug("Failed to load notification config", exc_info=True)
 
     return NotificationConfig()
 

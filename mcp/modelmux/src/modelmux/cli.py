@@ -12,8 +12,11 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def _cmd_server() -> None:
@@ -301,7 +304,7 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
                 raw = _load_file(cfg_file)
                 load_custom_providers(raw)
             except Exception:
-                pass
+                logger.warning("Failed to load custom providers from %s", cfg_file, exc_info=True)
 
     # Adapter resolver
     adapter_cache: dict[str, BaseAdapter] = {}

@@ -9,10 +9,13 @@ Separate from audit.jsonl which only stores metadata for policy/rate-limiting.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _history_file() -> Path:
@@ -46,7 +49,7 @@ def log_result(result_dict: dict, task: str = "", source: str = "dispatch") -> N
 
         notify_dispatch(result_dict, task=task, source=source)
     except Exception:
-        pass  # Never let notification failure affect core flow
+        logger.debug("Notification failed for %s dispatch", source, exc_info=True)
 
 
 def _maybe_rotate(path: Path, max_bytes: int = 10 * 1024 * 1024) -> None:
@@ -192,7 +195,7 @@ def get_trends(hours: float = 24, bucket_minutes: int = 60) -> dict:
                 )
                 b["cost"] += est.total_cost
             except Exception:
-                pass
+                logger.debug("Cost estimation failed for %s", prov, exc_info=True)
 
     # Convert to sorted list, compute derived fields
     sorted_keys = sorted(buckets_map.keys())

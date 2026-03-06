@@ -19,7 +19,6 @@ from mcp.server.fastmcp import Context, FastMCP
 from collab_hub.adapters import ADAPTERS, BaseAdapter
 from collab_hub.config import (
     CollabConfig,
-    get_active_profile,
     load_config,
     route_by_rules,
 )
@@ -42,22 +41,31 @@ _adapter_cache: dict[str, BaseAdapter] = {}
 # Built-in auto-routing keyword patterns (fallback when no custom rules)
 _ROUTE_PATTERNS: dict[str, list[re.Pattern]] = {
     "gemini": [
-        re.compile(r"\b(frontend|ui|ux|css|html|react|vue|svelte|angular|tailwind|"
-                   r"component|layout|responsive|style|theme|dashboard|"
-                   r"page|widget|modal|button|form|animation|figma|"
-                   r"visual|color|font|icon|image|illustration)\b", re.I),
+        re.compile(
+            r"\b(frontend|ui|ux|css|html|react|vue|svelte|angular|tailwind|"
+            r"component|layout|responsive|style|theme|dashboard|"
+            r"page|widget|modal|button|form|animation|figma|"
+            r"visual|color|font|icon|image|illustration)\b",
+            re.I,
+        ),
     ],
     "codex": [
-        re.compile(r"\b(implement|algorithm|backend|api|endpoint|database|sql|"
-                   r"debug|fix|bug|optimize|refactor|function|class|test|"
-                   r"server|middleware|auth|crud|migration|schema|query|"
-                   r"sort|search|tree|graph|linked.?list|hash|cache)\b", re.I),
+        re.compile(
+            r"\b(implement|algorithm|backend|api|endpoint|database|sql|"
+            r"debug|fix|bug|optimize|refactor|function|class|test|"
+            r"server|middleware|auth|crud|migration|schema|query|"
+            r"sort|search|tree|graph|linked.?list|hash|cache)\b",
+            re.I,
+        ),
     ],
     "claude": [
-        re.compile(r"\b(architect|design.?pattern|review|analyze|explain|"
-                   r"trade.?off|compare|evaluate|plan|strategy|"
-                   r"security|audit|vulnerabilit|threat|"
-                   r"documentation|spec|rfc|adr|critique)\b", re.I),
+        re.compile(
+            r"\b(architect|design.?pattern|review|analyze|explain|"
+            r"trade.?off|compare|evaluate|plan|strategy|"
+            r"security|audit|vulnerabilit|threat|"
+            r"documentation|spec|rfc|adr|critique)\b",
+            re.I,
+        ),
     ],
 }
 
@@ -78,9 +86,7 @@ def _builtin_auto_route(task: str) -> str:
 def _auto_route(task: str, config: CollabConfig) -> str:
     """Route using custom rules first, then built-in patterns as fallback."""
     if config.routing_rules:
-        result = route_by_rules(
-            task, config.routing_rules, config.default_provider
-        )
+        result = route_by_rules(task, config.routing_rules, config.default_provider)
         if result:
             return result
 
@@ -92,15 +98,15 @@ def _get_adapter(provider: str) -> BaseAdapter:
         cls = ADAPTERS.get(provider)
         if cls is None:
             raise ValueError(
-                f"Unknown provider: {provider}. "
-                f"Available: {', '.join(ADAPTERS.keys())}"
+                f"Unknown provider: {provider}. Available: {', '.join(ADAPTERS.keys())}"
             )
         _adapter_cache[provider] = cls()
     return _adapter_cache[provider]
 
 
 def _detect_and_build_exclusions(
-    ctx: Context, config: CollabConfig,
+    ctx: Context,
+    config: CollabConfig,
 ) -> tuple[CallerInfo, list[str]]:
     """Detect caller and build the combined exclusion list."""
     session = ctx.session if ctx._request_context else None
@@ -195,22 +201,28 @@ async def collab_dispatch(
                         adapter = fb_adapter
                         break
             else:
-                return json.dumps({
+                return json.dumps(
+                    {
+                        "run_id": "",
+                        "provider": actual_provider,
+                        "status": "error",
+                        "error": "No model CLIs available on PATH.",
+                    },
+                    indent=2,
+                )
+        else:
+            return json.dumps(
+                {
                     "run_id": "",
                     "provider": actual_provider,
                     "status": "error",
-                    "error": "No model CLIs available on PATH.",
-                }, indent=2)
-        else:
-            return json.dumps({
-                "run_id": "",
-                "provider": actual_provider,
-                "status": "error",
-                "error": (
-                    f"{actual_provider} CLI is not installed or not on PATH. "
-                    f"Please install it first."
-                ),
-            }, indent=2)
+                    "error": (
+                        f"{actual_provider} CLI is not installed or not on PATH. "
+                        f"Please install it first."
+                    ),
+                },
+                indent=2,
+            )
 
     # Build extra_args from explicit params + profile
     extra_args: dict = {}

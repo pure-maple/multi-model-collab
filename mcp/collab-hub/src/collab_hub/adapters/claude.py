@@ -15,10 +15,14 @@ class ClaudeAdapter(BaseAdapter):
     def _binary_name(self) -> str:
         return "claude"
 
-    def build_command(self, prompt: str, workdir: str,
-                      sandbox: str = "read-only",
-                      session_id: str = "",
-                      extra_args: dict | None = None) -> list[str]:
+    def build_command(
+        self,
+        prompt: str,
+        workdir: str,
+        sandbox: str = "read-only",
+        session_id: str = "",
+        extra_args: dict | None = None,
+    ) -> list[str]:
         cmd = ["claude", "-p", prompt]
 
         if extra_args:

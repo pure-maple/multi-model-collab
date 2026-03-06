@@ -29,10 +29,11 @@ _CONFIG_NAMES = [
 @dataclass
 class ProviderConfig:
     """Per-provider settings within a profile."""
+
     model: str = ""
     base_url: str = ""
-    api_key_env: str = ""       # Env var name holding the API key
-    wire_api: str = ""          # Codex: "responses" or "chat"
+    api_key_env: str = ""  # Env var name holding the API key
+    wire_api: str = ""  # Codex: "responses" or "chat"
     extra_env: dict[str, str] = field(default_factory=dict)
 
     def to_env_overrides(self, provider: str) -> dict[str, str]:
@@ -70,6 +71,7 @@ class ProviderConfig:
 @dataclass
 class Profile:
     """A named configuration profile."""
+
     description: str = ""
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
 
@@ -77,6 +79,7 @@ class Profile:
 @dataclass
 class RoutingRule:
     """A single routing rule."""
+
     provider: str = ""
     keywords: list[str] = field(default_factory=list)
     file_ext: list[str] = field(default_factory=list)
@@ -106,6 +109,7 @@ class RoutingRule:
 @dataclass
 class CollabConfig:
     """Complete configuration state."""
+
     active_profile: str = "default"
     profiles: dict[str, Profile] = field(default_factory=dict)
     routing_rules: list[RoutingRule] = field(default_factory=list)
@@ -143,6 +147,7 @@ def _load_file(path: Path) -> dict[str, Any]:
     if suffix in (".yaml", ".yml"):
         try:
             import yaml
+
             return yaml.safe_load(text) or {}
         except ImportError:
             raise ImportError(
@@ -189,9 +194,7 @@ def _parse_config(data: dict[str, Any]) -> CollabConfig:
     """Parse raw config dict into structured CollabConfig."""
     config = CollabConfig()
     config.active_profile = data.get("active_profile", "default")
-    config.default_provider = data.get("routing", {}).get(
-        "default_provider", "codex"
-    )
+    config.default_provider = data.get("routing", {}).get("default_provider", "codex")
     config.disabled_providers = data.get("disabled_providers", [])
     config.caller_override = data.get("caller_override", "")
     config.auto_exclude_caller = data.get("auto_exclude_caller", True)
@@ -215,7 +218,8 @@ def _merge_configs(base: CollabConfig, override: CollabConfig) -> CollabConfig:
     merged.active_profile = override.active_profile or base.active_profile
     merged.default_provider = override.default_provider or base.default_provider
     merged.disabled_providers = (
-        override.disabled_providers if override.disabled_providers
+        override.disabled_providers
+        if override.disabled_providers
         else base.disabled_providers
     )
 
@@ -224,14 +228,14 @@ def _merge_configs(base: CollabConfig, override: CollabConfig) -> CollabConfig:
 
     # Override routing rules if any defined, otherwise use base
     merged.routing_rules = (
-        override.routing_rules if override.routing_rules
-        else base.routing_rules
+        override.routing_rules if override.routing_rules else base.routing_rules
     )
 
     # Caller detection settings
     merged.caller_override = override.caller_override or base.caller_override
     merged.auto_exclude_caller = (
-        override.auto_exclude_caller if override.caller_override
+        override.auto_exclude_caller
+        if override.caller_override
         else base.auto_exclude_caller
     )
 
@@ -274,8 +278,7 @@ def get_active_profile(config: CollabConfig) -> Profile | None:
     return config.profiles.get(config.active_profile)
 
 
-def route_by_rules(task: str, rules: list[RoutingRule],
-                   default: str = "codex") -> str:
+def route_by_rules(task: str, rules: list[RoutingRule], default: str = "codex") -> str:
     """Route a task using custom routing rules.
 
     Returns provider name, or default if no rules match.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+
 from collab_hub.adapters.base import BaseAdapter
 
 # Regex to filter out reconnection noise
@@ -20,14 +21,20 @@ class CodexAdapter(BaseAdapter):
     def _binary_name(self) -> str:
         return "codex"
 
-    def build_command(self, prompt: str, workdir: str,
-                      sandbox: str = "read-only",
-                      session_id: str = "",
-                      extra_args: dict | None = None) -> list[str]:
+    def build_command(
+        self,
+        prompt: str,
+        workdir: str,
+        sandbox: str = "read-only",
+        session_id: str = "",
+        extra_args: dict | None = None,
+    ) -> list[str]:
         cmd = [
-            "codex", "exec",
+            "codex",
+            "exec",
             "--json",
-            "--cd", workdir,
+            "--cd",
+            workdir,
             "--skip-git-repo-check",
         ]
 

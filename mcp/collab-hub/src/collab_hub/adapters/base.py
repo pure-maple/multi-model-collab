@@ -9,8 +9,7 @@ import shutil
 import subprocess
 import time
 import uuid
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from threading import Thread
 from typing import Generator
 
@@ -55,10 +54,12 @@ def is_turn_completed(line: str) -> bool:
         return False
 
 
-def stream_subprocess(cmd: list[str], cwd: str | None = None,
-                      timeout: int = 300,
-                      env_overrides: dict[str, str] | None = None,
-                      ) -> Generator[str, None, int]:
+def stream_subprocess(
+    cmd: list[str],
+    cwd: str | None = None,
+    timeout: int = 300,
+    env_overrides: dict[str, str] | None = None,
+) -> Generator[str, None, int]:
     """Run a subprocess and yield stdout lines via a threaded queue.
 
     Returns the exit code via generator return value.
@@ -138,10 +139,14 @@ class BaseAdapter:
     def _binary_name(self) -> str:
         raise NotImplementedError
 
-    def build_command(self, prompt: str, workdir: str,
-                      sandbox: str = "read-only",
-                      session_id: str = "",
-                      extra_args: dict | None = None) -> list[str]:
+    def build_command(
+        self,
+        prompt: str,
+        workdir: str,
+        sandbox: str = "read-only",
+        session_id: str = "",
+        extra_args: dict | None = None,
+    ) -> list[str]:
         raise NotImplementedError
 
     def parse_output(self, lines: list[str]) -> tuple[str, str, str]:
@@ -151,13 +156,16 @@ class BaseAdapter:
         """
         raise NotImplementedError
 
-    async def run(self, prompt: str, workdir: str,
-                  sandbox: str = "read-only",
-                  session_id: str = "",
-                  timeout: int = 300,
-                  extra_args: dict | None = None,
-                  env_overrides: dict[str, str] | None = None,
-                  ) -> AdapterResult:
+    async def run(
+        self,
+        prompt: str,
+        workdir: str,
+        sandbox: str = "read-only",
+        session_id: str = "",
+        timeout: int = 300,
+        extra_args: dict | None = None,
+        env_overrides: dict[str, str] | None = None,
+    ) -> AdapterResult:
         """Execute a task and return the canonical result."""
         run_id = str(uuid.uuid4())[:8]
         start = time.monotonic()
@@ -171,9 +179,7 @@ class BaseAdapter:
             )
 
         try:
-            cmd = self.build_command(
-                prompt, workdir, sandbox, session_id, extra_args
-            )
+            cmd = self.build_command(prompt, workdir, sandbox, session_id, extra_args)
         except Exception as e:
             return AdapterResult(
                 run_id=run_id,
@@ -185,7 +191,12 @@ class BaseAdapter:
         lines: list[str] = []
         exit_code = 0
         try:
-            gen = stream_subprocess(cmd, cwd=workdir, timeout=timeout, env_overrides=env_overrides)
+            gen = stream_subprocess(
+                cmd,
+                cwd=workdir,
+                timeout=timeout,
+                env_overrides=env_overrides,
+            )
             for line in gen:
                 lines.append(line)
             # Get the return value (exit code) from the generator

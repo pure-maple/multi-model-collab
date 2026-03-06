@@ -51,10 +51,10 @@ _ENV_HINTS: list[tuple[str, str]] = [
 class CallerInfo:
     """Detected caller information."""
 
-    client_name: str = ""       # Raw clientInfo.name from MCP
-    client_version: str = ""    # clientInfo.version from MCP
-    provider: str = ""          # Mapped provider name (claude/codex/gemini)
-    platform: str = ""          # Platform type (cli/ide/unknown)
+    client_name: str = ""  # Raw clientInfo.name from MCP
+    client_version: str = ""  # clientInfo.version from MCP
+    provider: str = ""  # Mapped provider name (claude/codex/gemini)
+    platform: str = ""  # Platform type (cli/ide/unknown)
     detection_method: str = ""  # How it was detected
 
 

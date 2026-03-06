@@ -1,0 +1,68 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp/collab-hub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Unit tests
+        run: uv run python tests/test_detect.py
+
+      - name: Import verification
+        run: |
+          uv run python -c "
+          from collab_hub.server import mcp
+          print(f'collab-hub {mcp.name} ready')
+          "
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for PyPI Trusted Publisher
+    environment:
+      name: pypi
+      url: https://pypi.org/project/collab-hub/
+    defaults:
+      run:
+        working-directory: mcp/collab-hub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install build tools
+        run: uv sync
+
+      - name: Build package
+        run: uv run python -m build
+
+      - name: Validate package
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: mcp/collab-hub/dist/

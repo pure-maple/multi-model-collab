@@ -7,6 +7,7 @@ Session continuity via session_id → --resume.
 from __future__ import annotations
 
 import json
+
 from collab_hub.adapters.base import BaseAdapter
 
 # Known Gemini CLI deprecation warnings to filter out
@@ -23,10 +24,14 @@ class GeminiAdapter(BaseAdapter):
     def _binary_name(self) -> str:
         return "gemini"
 
-    def build_command(self, prompt: str, workdir: str,
-                      sandbox: str = "read-only",
-                      session_id: str = "",
-                      extra_args: dict | None = None) -> list[str]:
+    def build_command(
+        self,
+        prompt: str,
+        workdir: str,
+        sandbox: str = "read-only",
+        session_id: str = "",
+        extra_args: dict | None = None,
+    ) -> list[str]:
         cmd = ["gemini", "--prompt", prompt, "-o", "stream-json"]
 
         if sandbox in ("read-only", "sandbox"):

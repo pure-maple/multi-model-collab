@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: mcp/collab-hub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Lint with ruff
+        run: |
+          uv run ruff check src/
+          uv run ruff format --check src/
+
+      - name: Unit tests (detect)
+        run: uv run python tests/test_detect.py
+
+      - name: Import verification
+        run: |
+          uv run python -c "
+          from collab_hub.server import mcp, collab_dispatch, collab_check
+          from collab_hub.config import CollabConfig, load_config
+          from collab_hub.detect import detect_caller, CallerInfo
+          print('All imports OK')
+          "
+
+      - name: Build package
+        run: uv run python -m build
+
+      - name: Validate package
+        run: uv run twine check dist/*

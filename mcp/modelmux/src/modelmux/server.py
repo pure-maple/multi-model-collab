@@ -131,6 +131,65 @@ def _ensure_custom_providers_loaded() -> None:
                 )
 
 
+def _provider_health_summary() -> dict[str, dict]:
+    """Get per-provider health stats from recent history.
+
+    Returns {provider: {last_used_ago, avg_latency, success_rate}}
+    for providers with history data. Uses routing cache.
+    """
+    from modelmux.routing import _get_cached, _set_cached
+
+    cached = _get_cached("provider_health")
+    if cached is not None:
+        return cached
+
+    try:
+        entries = read_history(HistoryQuery(limit=200, hours=24))
+    except Exception:
+        return {}
+
+    now = time.time()
+    providers: dict[str, dict] = {}
+
+    for entry in entries:
+        prov = entry.get("provider", "")
+        if not prov:
+            continue
+        if prov not in providers:
+            providers[prov] = {
+                "last_ts": 0.0,
+                "durations": [],
+                "success": 0,
+                "total": 0,
+            }
+        ps = providers[prov]
+        ts = entry.get("ts", 0)
+        if ts > ps["last_ts"]:
+            ps["last_ts"] = ts
+        ps["durations"].append(entry.get("duration_seconds", 0))
+        ps["total"] += 1
+        if entry.get("status") == "success":
+            ps["success"] += 1
+
+    result: dict[str, dict] = {}
+    for prov, ps in providers.items():
+        ago = round(now - ps["last_ts"]) if ps["last_ts"] else 0
+        avg_lat = round(
+            sum(ps["durations"]) / len(ps["durations"]), 1,
+        ) if ps["durations"] else 0
+        rate = round(
+            ps["success"] / ps["total"] * 100, 1,
+        ) if ps["total"] else 0
+        result[prov] = {
+            "last_used_ago": f"{ago}s ago" if ago < 3600 else f"{ago // 3600}h ago",
+            "avg_latency": f"{avg_lat}s",
+            "success_rate": f"{rate}%",
+        }
+
+    _set_cached("provider_health", result)
+    return result
+
+
 def _detect_and_build_exclusions(
     ctx: Context,
     config: MuxConfig,
@@ -1167,6 +1226,9 @@ async def mux_check(ctx: Context, diagnose: str = "") -> str:
 
     all_adapters = get_all_adapters()
     status: dict = {}
+    # Get recent dispatch stats per provider for health info
+    recent_stats = _provider_health_summary()
+
     for name, adapter_or_cls in all_adapters.items():
         if isinstance(adapter_or_cls, BaseAdapter):
             adapter = adapter_or_cls
@@ -1179,6 +1241,12 @@ async def mux_check(ctx: Context, diagnose: str = "") -> str:
         }
         if name not in ADAPTERS:
             info["custom"] = True
+        # Add health stats if available
+        health = recent_stats.get(name)
+        if health:
+            info["last_used_ago"] = health["last_used_ago"]
+            info["avg_latency"] = health["avg_latency"]
+            info["recent_success_rate"] = health["success_rate"]
         status[name] = info
 
     status["_caller"] = {

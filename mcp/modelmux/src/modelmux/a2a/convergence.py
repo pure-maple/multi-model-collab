@@ -172,9 +172,7 @@ def _check_stability(
     if unchanged == len(current_hashes):
         return ConvergenceSignal(
             decision=ConvergenceDecision.COMPLETE,
-            reason=(
-                f"All {unchanged} artifact(s) unchanged — output has stabilized"
-            ),
+            reason=(f"All {unchanged} artifact(s) unchanged — output has stabilized"),
             confidence=0.75,
         )
 

@@ -1,0 +1,179 @@
+"""Tests for the modelmux web dashboard."""
+
+import json
+from unittest.mock import patch
+
+import pytest
+from starlette.testclient import TestClient
+
+from modelmux.dashboard import create_app
+
+
+@pytest.fixture
+def client():
+    app = create_app()
+    return TestClient(app)
+
+
+class TestDashboardIndex:
+    def test_index_returns_html(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "modelmux Dashboard" in resp.text
+
+    def test_index_contains_api_calls(self, client):
+        resp = client.get("/")
+        assert "/api/status" in resp.text
+        assert "/api/history" in resp.text
+        assert "/api/providers" in resp.text
+
+
+class TestApiStatus:
+    def test_empty_status(self, client):
+        with patch("modelmux.status.list_active", return_value=[]):
+            resp = client.get("/api/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "active" in data
+        assert data["count"] == 0
+
+    def test_status_with_active_dispatch(self, client):
+        from modelmux.status import DispatchStatus
+
+        mock_dispatch = DispatchStatus(
+            run_id="test-123",
+            provider="codex",
+            task_summary="review code",
+            status="running",
+            started_at=1000000.0,
+        )
+        with patch(
+            "modelmux.status.list_active", return_value=[mock_dispatch]
+        ):
+            resp = client.get("/api/status")
+        data = resp.json()
+        assert data["count"] == 1
+        assert data["active"][0]["provider"] == "codex"
+        assert data["active"][0]["run_id"] == "test-123"
+
+
+class TestApiHistory:
+    def test_empty_history(self, client):
+        with patch("modelmux.history.read_history", return_value=[]):
+            resp = client.get("/api/history")
+        data = resp.json()
+        assert data["count"] == 0
+        assert data["entries"] == []
+
+    def test_history_with_entries(self, client):
+        mock_entries = [
+            {"ts": 1000, "provider": "gemini", "status": "success", "task": "test"},
+        ]
+        with patch("modelmux.history.read_history", return_value=mock_entries):
+            resp = client.get("/api/history?limit=5&provider=gemini")
+        data = resp.json()
+        assert data["count"] == 1
+        assert data["entries"][0]["provider"] == "gemini"
+
+    def test_history_query_params(self, client):
+        """Verify query params are passed through."""
+        captured = {}
+
+        def mock_read(query):
+            captured["limit"] = query.limit
+            captured["provider"] = query.provider
+            captured["hours"] = query.hours
+            return []
+
+        with patch("modelmux.history.read_history", side_effect=mock_read):
+            client.get("/api/history?limit=5&provider=codex&hours=24")
+        assert captured["limit"] == 5
+        assert captured["provider"] == "codex"
+        assert captured["hours"] == 24.0
+
+
+class TestApiStats:
+    def test_empty_stats(self, client):
+        with patch(
+            "modelmux.history.get_history_stats",
+            return_value={"total": 0},
+        ):
+            resp = client.get("/api/stats")
+        data = resp.json()
+        assert data["total"] == 0
+
+    def test_stats_with_data(self, client):
+        mock_stats = {
+            "total": 42,
+            "by_provider": {
+                "codex": {
+                    "calls": 20,
+                    "success": 18,
+                    "error": 2,
+                    "success_rate": 90.0,
+                    "avg_duration": 15.3,
+                }
+            },
+            "by_source": {"dispatch": 30, "broadcast": 12},
+        }
+        with patch(
+            "modelmux.history.get_history_stats", return_value=mock_stats
+        ):
+            resp = client.get("/api/stats")
+        data = resp.json()
+        assert data["total"] == 42
+        assert data["by_provider"]["codex"]["calls"] == 20
+
+
+class TestApiProviders:
+    def test_providers_lists_builtins(self, client):
+        resp = client.get("/api/providers")
+        data = resp.json()
+        assert "providers" in data
+        # At minimum, built-in providers should be listed
+        for name in ["codex", "gemini", "claude", "ollama", "dashscope"]:
+            assert name in data["providers"]
+            assert data["providers"][name]["builtin"] is True
+
+    def test_provider_availability_check(self, client):
+        resp = client.get("/api/providers")
+        data = resp.json()
+        # Each provider should have an 'available' boolean
+        for info in data["providers"].values():
+            assert isinstance(info["available"], bool)
+
+
+class TestApiCosts:
+    def test_empty_costs(self, client):
+        with patch(
+            "modelmux.history.get_history_stats",
+            return_value={"total": 0},
+        ):
+            resp = client.get("/api/costs")
+        data = resp.json()
+        assert "costs" in data
+        assert "pricing" in data
+
+    def test_costs_includes_pricing_table(self, client):
+        with patch(
+            "modelmux.history.get_history_stats",
+            return_value={"total": 0},
+        ):
+            resp = client.get("/api/costs")
+        data = resp.json()
+        assert "codex" in data["pricing"]
+        assert "gemini" in data["pricing"]
+        assert "dashscope" in data["pricing"]
+
+
+class TestCreateApp:
+    def test_app_has_all_routes(self):
+        app = create_app()
+        paths = {r.path for r in app.routes}
+        assert "/" in paths
+        assert "/api/status" in paths
+        assert "/api/history" in paths
+        assert "/api/stats" in paths
+        assert "/api/providers" in paths
+        assert "/api/costs" in paths

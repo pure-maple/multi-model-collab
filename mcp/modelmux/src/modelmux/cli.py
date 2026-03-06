@@ -156,9 +156,7 @@ def _cmd_history(args: argparse.Namespace) -> None:
             print()
             print("Cost Estimation")
             print("-" * 50)
-            print(
-                f"  Entries with token data: {costs['entries_with_usage']}"
-            )
+            print(f"  Entries with token data: {costs['entries_with_usage']}")
             print(
                 f"  Total tokens: "
                 f"{costs['total_input_tokens']:,} in / "
@@ -201,6 +199,15 @@ def _cmd_history(args: argparse.Namespace) -> None:
         tag = "[B]" if src == "broadcast" else ""
         print(f"  {icon} {ts_str}  {prov:8s} {dur:5.1f}s  {tag}{task}")
     print()
+
+
+def _cmd_dashboard(args: argparse.Namespace) -> None:
+    """Start the web dashboard."""
+    from modelmux.dashboard import run_dashboard
+
+    host = getattr(args, "host", "127.0.0.1")
+    port = getattr(args, "port", 41521)
+    run_dashboard(host=host, port=port)
 
 
 def _cmd_a2a_server(args: argparse.Namespace) -> None:
@@ -363,6 +370,17 @@ def main() -> None:
         "--costs", action="store_true", help="Include cost estimation breakdown"
     )
 
+    # modelmux dashboard
+    dash_p = subparsers.add_parser(
+        "dashboard", help="Start the web monitoring dashboard"
+    )
+    dash_p.add_argument(
+        "--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)"
+    )
+    dash_p.add_argument(
+        "--port", type=int, default=41521, help="Port (default: 41521)"
+    )
+
     # modelmux version
     subparsers.add_parser("version", help="Show version")
 
@@ -382,6 +400,8 @@ def main() -> None:
         _cmd_status(args)
     elif args.command == "history":
         _cmd_history(args)
+    elif args.command == "dashboard":
+        _cmd_dashboard(args)
     elif args.command == "version":
         _cmd_version()
     else:

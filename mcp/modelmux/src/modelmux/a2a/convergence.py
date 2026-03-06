@@ -1,7 +1,7 @@
 """Multi-tier convergence detection for collaboration sessions.
 
 Layers (evaluated in order, first decisive result wins):
-  1. Hard limits (max rounds, max wall time, budget)
+  1. Hard limits (max rounds, max wall time)
   2. Structured signals (explicit CONVERGED/blocking markers in output)
   3. Stability detection (artifact hash unchanged across rounds)
   4. LLM judge (fallback for ambiguous cases — expensive, used sparingly)
@@ -34,7 +34,6 @@ _BLOCKING_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(r"(?:must|need(?:s)?|should)\s+(?:fix|address|resolve)", re.IGNORECASE),
-    re.compile(r"NEEDS_INPUT:", re.IGNORECASE),
 ]
 
 
@@ -65,15 +64,18 @@ def evaluate(
         return signal
 
     # Layer 3: Stability detection
+    current_hashes = _compute_artifact_hashes(task)
     if previous_artifact_hashes:
-        signal = _check_stability(task, previous_artifact_hashes)
+        signal = _check_stability(current_hashes, previous_artifact_hashes)
         if signal:
+            signal.metadata["artifact_hashes"] = current_hashes
             return signal
 
     # Default: continue
     return ConvergenceSignal(
         decision=ConvergenceDecision.CONTINUE,
         reason=f"Round {task.round_count} complete, no convergence signals detected",
+        metadata={"artifact_hashes": current_hashes},
     )
 
 
@@ -112,7 +114,7 @@ def _check_hard_limits(task: CollaborationTask) -> ConvergenceSignal | None:
 
 def _check_structured_signals(turn: Turn) -> ConvergenceSignal | None:
     """Layer 2: Check for explicit convergence/blocking signals in output."""
-    output = turn.output
+    output = turn.output or ""
 
     # Check for explicit convergence
     for pattern in _CONVERGED_PATTERNS:
@@ -152,27 +154,26 @@ def _check_structured_signals(turn: Turn) -> ConvergenceSignal | None:
 
 
 def _check_stability(
-    task: CollaborationTask,
+    current_hashes: dict[str, str],
     previous_hashes: dict[str, str],
 ) -> ConvergenceSignal | None:
     """Layer 3: Check if artifacts have stabilized (no changes)."""
-    current_hashes = _compute_artifact_hashes(task)
-
     if not current_hashes or not previous_hashes:
         return None
 
-    # Compare overlapping keys
-    common_keys = set(current_hashes) & set(previous_hashes)
-    if not common_keys:
+    # Detect added or removed artifacts — not stable
+    if set(current_hashes) != set(previous_hashes):
         return None
 
-    unchanged = sum(1 for k in common_keys if current_hashes[k] == previous_hashes[k])
+    unchanged = sum(
+        1 for k in current_hashes if current_hashes[k] == previous_hashes[k]
+    )
 
-    if unchanged == len(common_keys) and len(common_keys) > 0:
+    if unchanged == len(current_hashes):
         return ConvergenceSignal(
             decision=ConvergenceDecision.COMPLETE,
             reason=(
-                f"All {unchanged} shared artifact(s) unchanged — output has stabilized"
+                f"All {unchanged} artifact(s) unchanged — output has stabilized"
             ),
             confidence=0.75,
         )

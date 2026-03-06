@@ -151,6 +151,7 @@ class CollaborationEngine:
 
                     # Evaluate convergence after each turn
                     signal = convergence.evaluate(collab, turn, prev_hashes)
+                    prev_hashes = signal.metadata.get("artifact_hashes")
 
                     if signal.decision == ConvergenceDecision.COMPLETE:
                         self._progress(f"Converged: {signal.reason}")
@@ -164,12 +165,6 @@ class CollaborationEngine:
                         self._progress(f"Failed: {signal.reason}")
                         collab.transition(TaskState.FAILED)
                         break
-
-                # Update artifact hashes for next round's stability check
-                prev_hashes = {
-                    a.artifact_id: "".join(p.text for p in a.parts)
-                    for a in collab.artifacts
-                }
 
             # Handle cancellation after round
             if self._is_canceled() and not collab.is_terminal():

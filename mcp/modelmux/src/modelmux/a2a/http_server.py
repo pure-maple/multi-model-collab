@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -127,12 +128,14 @@ class A2AServer:
         port: int = 41520,
         workdir: str = ".",
         sandbox: str = "read-only",
+        auth_token: str = "",
     ) -> None:
         self._get_adapter = get_adapter
         self.host = host
         self.port = port
         self.workdir = workdir
         self.sandbox = sandbox
+        self.auth_token = auth_token or os.environ.get("MODELMUX_A2A_TOKEN", "")
         self.store = TaskStore()
         self._agent_card: dict[str, Any] | None = None
 
@@ -154,6 +157,8 @@ class A2AServer:
                 )
             )
 
+        auth_schemes = ["bearer"] if self.auth_token else []
+
         card = AgentCard(
             name="modelmux",
             description=(
@@ -171,6 +176,7 @@ class A2AServer:
                 "pushNotifications": False,
                 "stateTransitionHistory": True,
             },
+            auth_schemes=auth_schemes,
         )
 
         self._agent_card = card.to_dict()
@@ -182,8 +188,38 @@ class A2AServer:
         """GET /.well-known/agent.json"""
         return JSONResponse(self.build_agent_card())
 
+    def _check_auth(self, request: Request) -> Response | None:
+        """Validate Bearer token if authentication is configured.
+
+        Returns an error response if auth fails, None if OK.
+        """
+        if not self.auth_token:
+            return None  # No auth configured — open access
+
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                {
+                    "error": "Authentication required",
+                    "hint": "Set Authorization: Bearer <token>",
+                },
+                status_code=401,
+            )
+        token = auth_header[7:]
+        if not _constant_time_compare(token, self.auth_token):
+            return JSONResponse(
+                {"error": "Invalid token"},
+                status_code=403,
+            )
+        return None
+
     async def handle_jsonrpc(self, request: Request) -> Response:
         """POST / — JSON-RPC 2.0 dispatcher."""
+        # Auth check (Agent Card endpoint is always open per A2A spec)
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+
         try:
             body = await request.json()
         except Exception:
@@ -223,9 +259,9 @@ class A2AServer:
             return _jsonrpc_error(req_id, TASK_NOT_FOUND, str(e))
         except InvalidParamsError as e:
             return _jsonrpc_error(req_id, INVALID_PARAMS, str(e))
-        except Exception as e:
-            logger.exception("Internal error in %s", method)
-            return _jsonrpc_error(req_id, INTERNAL_ERROR, str(e))
+        except Exception:
+            logger.exception("Internal error in %s (req_id=%s)", method, req_id)
+            return _jsonrpc_error(req_id, INTERNAL_ERROR, "Internal server error")
 
     # --- JSON-RPC Method Handlers ---
 
@@ -365,64 +401,79 @@ class A2AServer:
                 )
             )
 
-            # Stream progress events
-            while not collab_future.done():
-                try:
-                    msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+            try:
+                # Stream progress events
+                while not collab_future.done():
+                    try:
+                        msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                        yield {
+                            "event": "task/progress",
+                            "data": json.dumps(
+                                {
+                                    "id": entry.task_id,
+                                    "status": {
+                                        "state": "working",
+                                        "message": msg,
+                                    },
+                                    "final": False,
+                                }
+                            ),
+                        }
+                    except asyncio.TimeoutError:
+                        continue
+
+                # Get final result
+                collab = collab_future.result()
+                result = _collab_to_a2a_result(collab, entry)
+                entry.collab = collab
+                entry.result = result
+                entry.state = collab.state.value
+                self.store.update(entry.task_id, state=entry.state, result=result)
+
+                # Emit artifact events
+                for art in collab.artifacts:
+                    if art.metadata.get("type") == "trace":
+                        continue
                     yield {
-                        "event": "task/progress",
+                        "event": "task/artifact",
                         "data": json.dumps(
                             {
                                 "id": entry.task_id,
-                                "status": {"state": "working", "message": msg},
+                                "artifact": {
+                                    "artifactId": art.artifact_id,
+                                    "name": art.name,
+                                    "parts": [
+                                        {"type": "text", "text": p.text}
+                                        for p in art.parts
+                                    ],
+                                },
                                 "final": False,
                             }
                         ),
                     }
-                except asyncio.TimeoutError:
-                    continue
 
-            # Get final result
-            collab = collab_future.result()
-            result = _collab_to_a2a_result(collab, entry)
-            entry.collab = collab
-            entry.result = result
-            entry.state = collab.state.value
-            self.store.update(entry.task_id, state=entry.state, result=result)
-
-            # Emit artifact events
-            for art in collab.artifacts:
-                if art.metadata.get("type") == "trace":
-                    continue
+                # Final status event
                 yield {
-                    "event": "task/artifact",
+                    "event": "task/status",
                     "data": json.dumps(
                         {
                             "id": entry.task_id,
-                            "artifact": {
-                                "artifactId": art.artifact_id,
-                                "name": art.name,
-                                "parts": [
-                                    {"type": "text", "text": p.text} for p in art.parts
-                                ],
-                            },
-                            "final": False,
+                            "contextId": entry.context_id,
+                            "status": {"state": collab.state.value},
+                            "final": True,
                         }
                     ),
                 }
-
-            # Final status event
-            yield {
-                "event": "task/status",
-                "data": json.dumps(
-                    {
-                        "id": entry.task_id,
-                        "contextId": entry.context_id,
-                        "status": {"state": collab.state.value},
-                        "final": True,
-                    }
-                ),
-            }
+            except asyncio.CancelledError:
+                # Client disconnected — cancel the background task
+                collab_future.cancel()
+                entry.state = "canceled"
+                self.store.update(entry.task_id, state="canceled")
+                logger.info(
+                    "SSE client disconnected, canceled task %s",
+                    entry.task_id,
+                )
+                raise
 
         return EventSourceResponse(event_generator())
 
@@ -439,17 +490,33 @@ class A2AServer:
             ),
         )
 
+    async def handle_health(self, request: Request) -> JSONResponse:
+        """GET /health — health check for load balancers."""
+        return JSONResponse({"status": "ok", "version": __version__})
+
     def create_app(self) -> Starlette:
         """Build the Starlette ASGI application."""
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+
         routes = [
             Route(
                 "/.well-known/agent.json",
                 self.handle_agent_card,
                 methods=["GET"],
             ),
+            Route("/health", self.handle_health, methods=["GET"]),
             Route("/", self.handle_jsonrpc, methods=["POST"]),
         ]
-        return Starlette(routes=routes)
+        middleware = [
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["GET", "POST"],
+                allow_headers=["Authorization", "Content-Type"],
+            ),
+        ]
+        return Starlette(routes=routes, middleware=middleware)
 
     def run(self) -> None:
         """Start the HTTP server (blocking)."""
@@ -471,6 +538,13 @@ class TaskNotFoundError(Exception):
 
 class InvalidParamsError(Exception):
     pass
+
+
+def _constant_time_compare(a: str, b: str) -> bool:
+    """Compare two strings in constant time to prevent timing attacks."""
+    import hmac
+
+    return hmac.compare_digest(a.encode(), b.encode())
 
 
 def _extract_task_params(

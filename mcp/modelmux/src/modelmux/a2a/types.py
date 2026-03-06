@@ -235,7 +235,7 @@ class AgentCard:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "url": self.url,
@@ -255,6 +255,9 @@ class AgentCard:
             "defaultInputModes": ["text/plain"],
             "defaultOutputModes": ["text/plain", "application/json"],
         }
+        if self.auth_schemes:
+            d["authSchemes"] = self.auth_schemes
+        return d
 
 
 # ---------------------------------------------------------------------------

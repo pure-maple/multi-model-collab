@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 
 
@@ -217,6 +218,7 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
     port = getattr(args, "port", 41520)
     workdir = getattr(args, "workdir", ".")
     sandbox = getattr(args, "sandbox", "read-only")
+    token = getattr(args, "token", "")
 
     from modelmux import __version__
 
@@ -225,6 +227,10 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
     print(f"  Agent Card: http://{host}:{port}/.well-known/agent.json")
     print(f"  Workdir: {workdir}")
     print(f"  Sandbox: {sandbox}")
+    if token or os.environ.get("MODELMUX_A2A_TOKEN"):
+        print("  Auth: Bearer token enabled")
+    else:
+        print("  Auth: disabled (open access)")
     print()
 
     server = A2AServer(
@@ -233,6 +239,7 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
         port=port,
         workdir=workdir,
         sandbox=sandbox,
+        auth_token=token,
     )
     server.run()
 
@@ -262,6 +269,11 @@ def main() -> None:
         choices=["read-only", "write", "full"],
         default="read-only",
         help="Sandbox level (default: read-only)",
+    )
+    a2a_p.add_argument(
+        "--token",
+        default="",
+        help="Bearer token for authentication (or set MODELMUX_A2A_TOKEN env var)",
     )
 
     # modelmux init

@@ -34,6 +34,7 @@ MCP Client → modelmux (FastMCP server, stdio)
 | `server.py` | MCP tools (dispatch, broadcast, history, check) |
 | `adapters/base.py` | Threaded subprocess runner, canonical result schema |
 | `adapters/{codex,gemini,claude,ollama}.py` | Provider-specific adapters |
+| `routing.py` | Smart routing v2 (keyword + history scoring) |
 | `config.py` | Profile loading, routing rules |
 | `detect.py` | Caller platform detection |
 | `audit.py` | JSONL audit log (policy rate-limiting) |

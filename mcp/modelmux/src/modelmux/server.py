@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
-import re
 import time
 import uuid
 from pathlib import Path
@@ -34,6 +33,7 @@ from modelmux.config import (
 from modelmux.detect import CallerInfo, detect_caller, get_excluded_providers
 from modelmux.history import HistoryQuery, get_history_stats, log_result, read_history
 from modelmux.policy import check_policy, load_policy
+from modelmux.routing import smart_route
 from modelmux.status import DispatchStatus, list_active, remove_status, write_status
 from modelmux.workflow import (
     BUILTIN_WORKFLOWS,
@@ -56,59 +56,26 @@ mcp = FastMCP(
 # Adapter instances (lazy-initialized)
 _adapter_cache: dict[str, BaseAdapter] = {}
 
-# Built-in auto-routing keyword patterns (fallback when no custom rules)
-_ROUTE_PATTERNS: dict[str, list[re.Pattern]] = {
-    "gemini": [
-        re.compile(
-            r"\b(frontend|ui|ux|css|html|react|vue|svelte|angular|tailwind|"
-            r"component|layout|responsive|style|theme|dashboard|"
-            r"page|widget|modal|button|form|animation|figma|"
-            r"visual|color|font|icon|image|illustration)\b",
-            re.I,
-        ),
-    ],
-    "codex": [
-        re.compile(
-            r"\b(implement|algorithm|backend|api|endpoint|database|sql|"
-            r"debug|fix|bug|optimize|refactor|function|class|test|"
-            r"server|middleware|auth|crud|migration|schema|query|"
-            r"sort|search|tree|graph|linked.?list|hash|cache)\b",
-            re.I,
-        ),
-    ],
-    "claude": [
-        re.compile(
-            r"\b(architect|design.?pattern|review|analyze|explain|"
-            r"trade.?off|compare|evaluate|plan|strategy|"
-            r"security|audit|vulnerabilit|threat|"
-            r"documentation|spec|rfc|adr|critique)\b",
-            re.I,
-        ),
-    ],
-}
 
-
-def _builtin_auto_route(task: str) -> str:
-    """Built-in keyword routing (fallback when no custom rules)."""
-    scores: dict[str, int] = {}
-    for provider, patterns in _ROUTE_PATTERNS.items():
-        score = sum(len(p.findall(task)) for p in patterns)
-        scores[provider] = score
-
-    best = max(scores, key=lambda k: scores[k])
-    if scores[best] == 0:
-        return "codex"
-    return best
-
-
-def _auto_route(task: str, config: MuxConfig) -> str:
-    """Route using custom rules first, then built-in patterns as fallback."""
+def _auto_route(
+    task: str,
+    config: MuxConfig,
+    available: list[str],
+    excluded: list[str],
+) -> str:
+    """Smart route: custom rules → keyword + history scoring."""
     if config.routing_rules:
         result = route_by_rules(task, config.routing_rules, config.default_provider)
-        if result:
+        if result and result not in excluded:
             return result
 
-    return _builtin_auto_route(task)
+    best, _ = smart_route(
+        task,
+        available_providers=available,
+        excluded=excluded,
+        default=config.default_provider,
+    )
+    return best
 
 
 def _get_adapter(provider: str) -> BaseAdapter:
@@ -267,11 +234,14 @@ async def mux_dispatch(
     # Auto-route if needed
     actual_provider = provider
     if provider == "auto":
-        actual_provider = _auto_route(task, config)
-        if actual_provider in excluded:
-            for alt in _get_fallback_candidates(actual_provider, excluded):
-                actual_provider = alt
-                break
+        all_adapters = get_all_adapters()
+        available = [
+            name
+            for name, a in all_adapters.items()
+            if (isinstance(a, BaseAdapter) and a.check_available())
+            or (not isinstance(a, BaseAdapter) and a().check_available())
+        ]
+        actual_provider = _auto_route(task, config, available, excluded)
 
     # Warn if explicitly dispatching to self
     if provider != "auto" and provider in excluded and caller.provider == provider:

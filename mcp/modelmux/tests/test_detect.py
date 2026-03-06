@@ -126,10 +126,11 @@ def test_exclusion_unknown_caller():
 
 def test_routing_exclusion_scenario():
     """Full scenario: Claude Code calling, task routes to claude → redirect."""
-    from modelmux.server import _builtin_auto_route
+    from modelmux.routing import keyword_scores
 
     task = "Review this code for security vulnerabilities"
-    route = _builtin_auto_route(task)
+    scores = keyword_scores(task)
+    route = max(scores, key=lambda k: scores[k])
     assert route == "claude", f"Expected claude route, got {route}"
 
     caller = CallerInfo(provider="claude", platform="cli")
@@ -144,15 +145,15 @@ def test_routing_exclusion_scenario():
 
     assert actual != "claude", f"Should not route to caller (claude)"
     assert actual == "codex", f"Expected codex fallback, got {actual}"
-    print("[PASS] routing exclusion redirects away from caller")
 
 
 def test_routing_no_exclusion_needed():
     """Task routes to different provider than caller → no change."""
-    from modelmux.server import _builtin_auto_route
+    from modelmux.routing import keyword_scores
 
     task = "Implement a binary search algorithm"
-    route = _builtin_auto_route(task)
+    scores = keyword_scores(task)
+    route = max(scores, key=lambda k: scores[k])
     assert route == "codex"
 
     caller = CallerInfo(provider="claude", platform="cli")
@@ -166,7 +167,6 @@ def test_routing_no_exclusion_needed():
                 break
 
     assert actual == "codex", "Route should stay as codex"
-    print("[PASS] no redirect needed when route != caller")
 
 
 def test_combined_exclusion():

@@ -1,5 +1,7 @@
 # Multi-Model Collab
 
+English | [中文](docs/README_CN.md)
+
 Cross-platform multi-model AI collaboration skill. Dispatch tasks to **Codex CLI**, **Gemini CLI**, and **Claude Code CLI** through a unified MCP interface.
 
 ## Why

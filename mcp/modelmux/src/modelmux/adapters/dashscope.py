@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 import httpx
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter, TokenUsage
+from modelmux.adapters.base import AdapterResult, BaseAdapter, TokenUsage, sanitize_extra_args
 
 DEFAULT_MODEL = "qwen3-coder-plus"
 DEFAULT_BASE_URL = "https://coding.dashscope.aliyuncs.com/v1"
@@ -98,6 +98,7 @@ class DashScopeAdapter(BaseAdapter):
     ) -> AdapterResult:
         run_id = str(uuid.uuid4())[:8]
         start = time.monotonic()
+        extra_args = sanitize_extra_args(extra_args)
 
         # API key: env_overrides (from config) > env var
         api_key = ""

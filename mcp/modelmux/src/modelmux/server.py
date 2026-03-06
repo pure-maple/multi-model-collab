@@ -1091,6 +1091,19 @@ async def mux_check(ctx: Context) -> str:
     # Audit summary
     status["_audit"] = get_audit_stats()
 
+    # Routing v3 diagnostics
+    from modelmux.routing import _BENCHMARK_FILE
+
+    available_providers = [p for p, info in status.items()
+                          if not p.startswith("_") and isinstance(info, dict)
+                          and info.get("available")]
+    status["_routing"] = {
+        "version": "v3",
+        "signals": ["keyword", "history", "benchmark"],
+        "benchmark_data": _BENCHMARK_FILE.exists(),
+        "available_for_routing": available_providers,
+    }
+
     return json.dumps(status, indent=2)
 
 

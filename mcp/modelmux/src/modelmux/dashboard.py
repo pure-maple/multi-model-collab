@@ -155,6 +155,42 @@ async def api_collaborations(request: Request) -> JSONResponse:
     return JSONResponse({"collaborations": collabs, "count": len(collabs)})
 
 
+async def api_feedback(request: Request) -> JSONResponse:
+    """GET /api/feedback — feedback scores and recent entries."""
+    from modelmux.feedback import feedback_scores, read_feedback
+
+    hours = _clamp_float(request.query_params.get("hours", "168"), 168.0, lo=1.0)
+    entries = read_feedback(hours=hours)
+
+    # Compute per-provider scores
+    providers_seen = list({e.get("provider", "") for e in entries if e.get("provider")})
+    scores = feedback_scores(providers_seen, hours=hours) if providers_seen else {}
+
+    # Per-provider summary
+    provider_summary: dict[str, dict] = {}
+    for e in entries:
+        prov = e.get("provider", "")
+        if not prov:
+            continue
+        if prov not in provider_summary:
+            provider_summary[prov] = {"count": 0, "total_rating": 0, "ratings": []}
+        provider_summary[prov]["count"] += 1
+        provider_summary[prov]["total_rating"] += e.get("rating", 0)
+        provider_summary[prov]["ratings"].append(e.get("rating", 0))
+
+    for prov, summary in provider_summary.items():
+        summary["avg_rating"] = round(summary["total_rating"] / summary["count"], 2) if summary["count"] else 0
+        summary["score"] = round(scores.get(prov, 0.5), 3)
+        del summary["ratings"]  # don't send raw list
+
+    return JSONResponse({
+        "total_entries": len(entries),
+        "recent": entries[-20:],  # last 20 entries
+        "by_provider": provider_summary,
+        "hours": hours,
+    })
+
+
 async def api_costs(request: Request) -> JSONResponse:
     """GET /api/costs — cost breakdown."""
     from modelmux.costs import PRICING
@@ -249,6 +285,11 @@ td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
   <div class="card">
     <h2>Cost Summary</h2>
     <div id="costs"><p class="loading">Loading...</p></div>
+  </div>
+
+  <div class="card">
+    <h2>User Feedback</h2>
+    <div id="feedback"><p class="loading">Loading...</p></div>
   </div>
 </div>
 
@@ -356,6 +397,20 @@ async function refreshHistory() {
   $('history').innerHTML = h;
 }
 
+async function refreshFeedback() {
+  const d = await fetchJSON('/api/feedback?hours=168');
+  if (!d || d.total_entries === 0) { $('feedback').innerHTML = '<p style="color:var(--text-dim)">No feedback yet. Use mux_feedback to rate results.</p>'; return; }
+  let h = '';
+  for (const [prov, info] of Object.entries(d.by_provider || {})) {
+    const stars = '&#9733;'.repeat(Math.round(info.avg_rating)) + '&#9734;'.repeat(5 - Math.round(info.avg_rating));
+    const scoreColor = info.score >= 0.7 ? 'var(--green)' : info.score >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+    h += `<div class="stat"><span class="stat-label">${esc(prov)} <span style="color:var(--yellow)">${stars}</span></span>`;
+    h += `<span>${info.avg_rating}/5 (${info.count} ratings) <span style="color:${scoreColor};font-weight:600">score: ${info.score}</span></span></div>`;
+  }
+  h += `<div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)">Last 7 days &middot; ${d.total_entries} total ratings</div>`;
+  $('feedback').innerHTML = h;
+}
+
 let volumeChart = null, perfChart = null;
 
 async function refreshTrends() {
@@ -403,7 +458,7 @@ async function refreshCollabs() {
 }
 
 async function refresh() {
-  await Promise.all([refreshActive(), refreshProviders(), refreshStats(), refreshCosts(), refreshHistory(), refreshTrends(), refreshCollabs()]);
+  await Promise.all([refreshActive(), refreshProviders(), refreshStats(), refreshCosts(), refreshFeedback(), refreshHistory(), refreshTrends(), refreshCollabs()]);
 }
 refresh();
 setInterval(refresh, 5000);
@@ -423,6 +478,7 @@ def create_app() -> Starlette:
             Route("/api/stats", api_stats),
             Route("/api/providers", api_providers),
             Route("/api/costs", api_costs),
+            Route("/api/feedback", api_feedback),
             Route("/api/trends", api_trends),
             Route("/api/collaborations", api_collaborations),
         ],

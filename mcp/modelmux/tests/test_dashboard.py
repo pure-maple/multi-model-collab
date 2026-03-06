@@ -27,6 +27,7 @@ class TestDashboardIndex:
         assert "/api/status" in resp.text
         assert "/api/history" in resp.text
         assert "/api/providers" in resp.text
+        assert "/api/feedback" in resp.text
 
 
 class TestApiStatus:
@@ -322,6 +323,53 @@ class TestParamClamping:
         assert _clamp_float("nan-value", 24.0) == 24.0
 
 
+class TestApiFeedback:
+    def test_empty_feedback(self, client):
+        with patch("modelmux.feedback.read_feedback", return_value=[]):
+            resp = client.get("/api/feedback")
+        data = resp.json()
+        assert data["total_entries"] == 0
+        assert data["by_provider"] == {}
+        assert data["recent"] == []
+
+    def test_feedback_with_data(self, client):
+        mock_entries = [
+            {"ts": 1000, "provider": "codex", "rating": 4, "category": "code"},
+            {"ts": 1001, "provider": "codex", "rating": 5, "category": "code"},
+            {"ts": 1002, "provider": "gemini", "rating": 3, "category": "design"},
+        ]
+        with patch("modelmux.feedback.read_feedback", return_value=mock_entries):
+            with patch("modelmux.feedback.feedback_scores", return_value={"codex": 0.8, "gemini": 0.6}):
+                resp = client.get("/api/feedback")
+        data = resp.json()
+        assert data["total_entries"] == 3
+        assert data["by_provider"]["codex"]["count"] == 2
+        assert data["by_provider"]["codex"]["avg_rating"] == 4.5
+        assert data["by_provider"]["codex"]["score"] == 0.8
+        assert data["by_provider"]["gemini"]["count"] == 1
+        assert data["by_provider"]["gemini"]["avg_rating"] == 3.0
+
+    def test_feedback_hours_param(self, client):
+        captured = {}
+
+        def mock_read(hours=168):
+            captured["hours"] = hours
+            return []
+
+        with patch("modelmux.feedback.read_feedback", side_effect=mock_read):
+            client.get("/api/feedback?hours=48")
+        assert captured["hours"] == 48.0
+
+    def test_feedback_recent_capped(self, client):
+        """Recent entries capped to last 20."""
+        entries = [{"ts": i, "provider": "codex", "rating": 3, "category": ""} for i in range(50)]
+        with patch("modelmux.feedback.read_feedback", return_value=entries):
+            with patch("modelmux.feedback.feedback_scores", return_value={"codex": 0.5}):
+                resp = client.get("/api/feedback")
+        data = resp.json()
+        assert len(data["recent"]) == 20
+
+
 class TestCreateApp:
     def test_app_has_all_routes(self):
         app = create_app()
@@ -332,5 +380,6 @@ class TestCreateApp:
         assert "/api/stats" in paths
         assert "/api/providers" in paths
         assert "/api/costs" in paths
+        assert "/api/feedback" in paths
         assert "/api/trends" in paths
         assert "/api/collaborations" in paths

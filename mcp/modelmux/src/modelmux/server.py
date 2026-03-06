@@ -1134,11 +1134,15 @@ async def mux_workflow(
 
 
 @mcp.tool()
-async def mux_check(ctx: Context) -> str:
+async def mux_check(ctx: Context, diagnose: str = "") -> str:
     """Check which model CLIs are available and show active configuration.
 
     Returns availability status for codex, gemini, and claude CLIs,
     the active profile, detected caller platform, and excluded providers.
+
+    Args:
+        diagnose: Optional task prompt to diagnose routing. When provided,
+                  shows the four-signal score breakdown for each provider.
     """
     _ensure_custom_providers_loaded()
 
@@ -1219,6 +1223,38 @@ async def mux_check(ctx: Context) -> str:
         "feedback_data": _feedback_file().exists(),
         "available_for_routing": available_providers,
     }
+
+    # Diagnose mode: show four-signal score breakdown for a given prompt
+    if diagnose.strip():
+        from modelmux.routing import classify_task, smart_route
+
+        diag_candidates = [p for p in available_providers if p not in excluded]
+        if diag_candidates:
+            best, scores = smart_route(
+                diagnose, available_providers, excluded=list(excluded),
+            )
+            category = classify_task(diagnose)
+            breakdown = {}
+            for prov, ps in scores.items():
+                breakdown[prov] = {
+                    "keyword": round(ps.keyword_score, 3),
+                    "history": round(ps.success_rate * 0.7 + ps.latency_score * 0.3, 3),
+                    "benchmark": round(ps.benchmark_score, 3),
+                    "feedback": round(ps.feedback_score, 3),
+                    "composite": round(ps.composite, 3),
+                    "history_calls": ps.history_calls,
+                }
+            status["_diagnose"] = {
+                "prompt": diagnose[:200],
+                "category": category,
+                "best_provider": best,
+                "scores": breakdown,
+            }
+        else:
+            status["_diagnose"] = {
+                "prompt": diagnose[:200],
+                "error": "No available providers for routing",
+            }
 
     return json.dumps(status, indent=2)
 

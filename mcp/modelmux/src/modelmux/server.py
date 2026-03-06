@@ -29,6 +29,12 @@ from modelmux.detect import CallerInfo, detect_caller, get_excluded_providers
 from modelmux.history import HistoryQuery, get_history_stats, log_result, read_history
 from modelmux.policy import check_policy, load_policy
 from modelmux.status import DispatchStatus, list_active, remove_status, write_status
+from modelmux.workflow import (
+    BUILTIN_WORKFLOWS,
+    Workflow,
+    parse_workflows,
+    render_task,
+)
 
 mcp = FastMCP(
     "modelmux",
@@ -592,6 +598,156 @@ async def mux_history(
         indent=2,
         ensure_ascii=False,
     )
+
+
+@mcp.tool()
+async def mux_workflow(
+    workflow: str,
+    task: str,
+    ctx: Context,
+    workdir: str = ".",
+    list_workflows: bool = False,
+) -> str:
+    """Execute a multi-step workflow pipeline across multiple AI models.
+
+    Workflows chain multiple providers sequentially, where each step
+    can reference outputs from previous steps. Use list_workflows=True
+    to see available workflows.
+
+    Args:
+        workflow: Workflow name (e.g. "review", "consensus").
+        task: The input task/prompt that starts the pipeline.
+        workdir: Working directory for all steps.
+        list_workflows: If True, ignore other params and return
+            available workflow definitions.
+    """
+    resolved_workdir = str(Path(workdir).resolve())
+
+    # Load user-defined workflows + built-ins
+    user_file = Path.home() / ".config" / "modelmux"
+    from modelmux.config import _find_config_file, _load_file
+
+    user_workflows: dict[str, Workflow] = {}
+    for cfg_dir in [user_file, Path(resolved_workdir) / ".modelmux"]:
+        cfg_file = _find_config_file(cfg_dir)
+        if cfg_file:
+            try:
+                raw = _load_file(cfg_file)
+                user_workflows.update(parse_workflows(raw))
+            except Exception:
+                pass
+
+    all_workflows = {**BUILTIN_WORKFLOWS, **user_workflows}
+
+    if list_workflows:
+        listing = {}
+        for name, wf in all_workflows.items():
+            listing[name] = {
+                "description": wf.description,
+                "steps": [{"name": s.name, "provider": s.provider} for s in wf.steps],
+            }
+        return json.dumps(listing, indent=2, ensure_ascii=False)
+
+    wf = all_workflows.get(workflow)
+    if not wf:
+        return json.dumps(
+            {
+                "status": "error",
+                "error": f"Unknown workflow: '{workflow}'. "
+                f"Available: {', '.join(all_workflows.keys())}",
+            },
+            indent=2,
+        )
+
+    await ctx.info(f"Starting workflow '{workflow}' ({len(wf.steps)} steps)...")
+
+    # Execute steps sequentially
+    context: dict[str, str] = {"input": task}
+    step_results: list[dict] = []
+
+    for i, step in enumerate(wf.steps, 1):
+        rendered_task = render_task(step.task, context)
+        provider = step.provider
+
+        await ctx.info(f"Step {i}/{len(wf.steps)}: {step.name} → {provider}...")
+
+        adapter = _get_adapter(provider)
+        if not adapter.check_available():
+            step_results.append(
+                {
+                    "step": step.name,
+                    "provider": provider,
+                    "status": "error",
+                    "error": f"{provider} CLI not available",
+                }
+            )
+            context[step.name] = f"[ERROR: {provider} not available]"
+            continue
+
+        run_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        status_obj = DispatchStatus(
+            run_id=run_id,
+            provider=provider,
+            task_summary=f"[{workflow}/{step.name}] {rendered_task[:100]}",
+            status="running",
+            started_at=start_time,
+        )
+        write_status(status_obj)
+
+        extra_args: dict = {}
+        if step.model:
+            extra_args["model"] = step.model
+
+        result = await adapter.run(
+            prompt=rendered_task,
+            workdir=resolved_workdir,
+            sandbox=step.sandbox,
+            session_id="",
+            timeout=step.timeout,
+            extra_args=extra_args if extra_args else None,
+        )
+
+        remove_status(run_id)
+
+        # Store output for next steps
+        context[step.name] = result.output or result.error or ""
+
+        step_result = result.to_dict()
+        step_result["step"] = step.name
+        step_results.append(step_result)
+
+        # Audit
+        log_dispatch(
+            AuditEntry(
+                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                provider=provider,
+                task_summary=rendered_task[:200],
+                status=result.status,
+                duration_seconds=result.duration_seconds,
+                routed_from=f"workflow:{workflow}",
+                sandbox=step.sandbox,
+                model=step.model,
+                error=result.error,
+            )
+        )
+
+    workflow_result = {
+        "workflow": workflow,
+        "description": wf.description,
+        "steps": step_results,
+        "summary": {
+            "total_steps": len(step_results),
+            "success": sum(1 for r in step_results if r.get("status") == "success"),
+            "total_duration": round(
+                sum(r.get("duration_seconds", 0) for r in step_results), 1
+            ),
+        },
+    }
+
+    log_result(workflow_result, task=task, source="workflow")
+
+    return json.dumps(workflow_result, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()

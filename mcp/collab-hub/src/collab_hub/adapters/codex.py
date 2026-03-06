@@ -43,6 +43,10 @@ class CodexAdapter(BaseAdapter):
         if extra_args:
             if extra_args.get("model"):
                 cmd.extend(["--model", extra_args["model"]])
+            if extra_args.get("profile"):
+                cmd.extend(["--profile", extra_args["profile"]])
+            if extra_args.get("reasoning_effort"):
+                cmd.extend(["--reasoning-effort", extra_args["reasoning_effort"]])
             if extra_args.get("image"):
                 for img in extra_args["image"]:
                     cmd.extend(["--image", str(img)])

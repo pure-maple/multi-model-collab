@@ -2,14 +2,42 @@
 
 Wraps `codex exec --json` with JSONL event parsing.
 Session continuity via thread_id → resume.
+
+Includes workaround for Codex CLI UTF-8 header bug:
+when workdir contains non-ASCII characters (e.g. Chinese path
+like '我的云端硬盘'), the x-codex-turn-metadata HTTP header
+encoding fails. We create a temporary ASCII symlink as a fix.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 
 from modelmux.adapters.base import BaseAdapter
+
+
+def _needs_ascii_workaround(path: str) -> bool:
+    """Check if a path contains non-ASCII characters."""
+    try:
+        path.encode("ascii")
+        return False
+    except UnicodeEncodeError:
+        return True
+
+
+def _create_ascii_symlink(target: str) -> str:
+    """Create a temporary symlink with an ASCII-safe path.
+
+    Returns the symlink path. Caller should clean up after use.
+    """
+    link_dir = tempfile.mkdtemp(prefix="mux-codex-")
+    link_path = os.path.join(link_dir, "workdir")
+    os.symlink(target, link_path)
+    return link_path
+
 
 # Regex to filter out reconnection noise
 RECONNECT_RE = re.compile(r"^Reconnecting\.\.\.\s+\d+/\d+")
@@ -106,3 +134,41 @@ class CodexAdapter(BaseAdapter):
         agent_text = "\n".join(agent_messages)
         error_text = "\n".join(errors)
         return agent_text, thread_id, error_text
+
+    async def run(
+        self,
+        prompt: str = "",
+        workdir: str = ".",
+        sandbox: str = "read-only",
+        session_id: str = "",
+        timeout: int = 300,
+        extra_args: dict | None = None,
+        env_overrides: dict[str, str] | None = None,
+        on_progress=None,
+    ):
+        """Execute with ASCII workdir workaround for Codex UTF-8 bug."""
+        ascii_link = ""
+        actual_workdir = workdir
+
+        if _needs_ascii_workaround(workdir):
+            ascii_link = _create_ascii_symlink(workdir)
+            actual_workdir = ascii_link
+
+        try:
+            return await super().run(
+                prompt=prompt,
+                workdir=actual_workdir,
+                sandbox=sandbox,
+                session_id=session_id,
+                timeout=timeout,
+                extra_args=extra_args,
+                env_overrides=env_overrides,
+                on_progress=on_progress,
+            )
+        finally:
+            if ascii_link:
+                try:
+                    os.unlink(ascii_link)
+                    os.rmdir(os.path.dirname(ascii_link))
+                except OSError:
+                    pass

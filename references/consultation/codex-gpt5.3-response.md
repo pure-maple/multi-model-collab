@@ -1,6 +1,6 @@
 OpenAI Codex v0.110.0 (research preview)
 --------
-workdir: /Users/maple/Library/CloudStorage/GoogleDrive-maplehuovo@gmail.com/我的云端硬盘/dev/claudecode/tmux-multi-model
+workdir: ~/dev/multi-model-collab
 model: gpt-5.3-codex
 provider: openai
 approval: never
@@ -117,7 +117,7 @@ mcp startup: no servers
 codex
 I’ll treat this as a skill-architecture design review and answer all 10 questions with concrete implementation guidance. First I’m loading the `skill-creator` instructions from your AGENTS config, then I’ll verify current Codex/Gemini/Claude CLI and MCP details before drafting the recommendation.
 exec
-/bin/zsh -lc "cat '/Users/maple/.codex/skills/.system/skill-creator/SKILL.md'" in /Users/maple/Library/CloudStorage/GoogleDrive-maplehuovo@gmail.com/我的云端硬盘/dev/claudecode/tmux-multi-model succeeded in 51ms:
+/bin/zsh -lc "cat '~/.codex/skills/.system/skill-creator/SKILL.md'" in ~/dev/multi-model-collab succeeded in 51ms:
 ---
 name: skill-creator
 description: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations.

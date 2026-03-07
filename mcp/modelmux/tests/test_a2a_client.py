@@ -4,6 +4,8 @@ Tests the client against a real A2A server using httpx ASGI transport
 (no network required).
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
 
@@ -455,3 +457,292 @@ class TestA2AClientInit:
             A2AClientConfig(url="http://test:41520/")
         )
         assert client._base_url == "http://test:41520"
+
+
+# --- A2A Client async method tests (mocked httpx) ---
+
+
+def _mock_httpx_response(json_data, status_code=200):
+    """Create a mock httpx.Response."""
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = json_data
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+def _mock_async_client(response):
+    """Create a mock async context manager for httpx.AsyncClient."""
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.post = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
+class TestA2AClientDiscover:
+    @pytest.mark.asyncio
+    async def test_discover_success(self):
+        card = {"name": "remote-agent", "skills": []}
+        mock_resp = _mock_httpx_response(card)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://remote:8080"))
+            result = await client.discover()
+
+        assert result["name"] == "remote-agent"
+        mock_http.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_discover_with_auth(self):
+        card = {"name": "agent"}
+        mock_resp = _mock_httpx_response(card)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(
+                A2AClientConfig(url="http://remote:8080", token="tok")
+            )
+            await client.discover()
+
+        call_kwargs = mock_http.get.call_args
+        assert call_kwargs[1]["headers"]["Authorization"] == "Bearer tok"
+
+
+class TestA2AClientSend:
+    @pytest.mark.asyncio
+    async def test_send_success(self):
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "id": "task-abc",
+                "contextId": "ctx-1",
+                "status": {"state": "completed"},
+                "history": [
+                    {
+                        "role": "agent",
+                        "parts": [{"type": "text", "text": "result text"}],
+                    }
+                ],
+            },
+        }
+        mock_resp = _mock_httpx_response(body)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.send("do something", pattern="review")
+
+        assert result.task_id == "task-abc"
+        assert result.state == "completed"
+        assert result.output == "result text"
+        mock_http.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_with_all_params(self):
+        body = {"jsonrpc": "2.0", "id": 1, "result": {"id": "t1", "status": {"state": "completed"}}}
+        mock_resp = _mock_httpx_response(body)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            await client.send(
+                "task",
+                pattern="debate",
+                task_id="custom-id",
+                providers={"proponent": "codex"},
+                timeout_per_turn=300,
+            )
+
+        call_args = mock_http.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["method"] == "tasks/send"
+        assert payload["params"]["id"] == "custom-id"
+        assert payload["params"]["metadata"]["pattern"] == "debate"
+
+    @pytest.mark.asyncio
+    async def test_send_error_response(self):
+        body = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32001, "message": "fail"}}
+        mock_resp = _mock_httpx_response(body)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.send("task")
+
+        assert result.error == "fail"
+
+
+class TestA2AClientGet:
+    @pytest.mark.asyncio
+    async def test_get_task(self):
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "id": "task-123",
+                "status": {"state": "working"},
+            },
+        }
+        mock_resp = _mock_httpx_response(body)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.get("task-123")
+
+        assert result.task_id == "task-123"
+        assert result.state == "working"
+        call_args = mock_http.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["method"] == "tasks/get"
+        assert payload["params"]["id"] == "task-123"
+
+
+class TestA2AClientCancel:
+    @pytest.mark.asyncio
+    async def test_cancel_task(self):
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "id": "task-456",
+                "status": {"state": "canceled"},
+            },
+        }
+        mock_resp = _mock_httpx_response(body)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.cancel("task-456")
+
+        assert result.task_id == "task-456"
+        assert result.state == "canceled"
+        call_args = mock_http.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["method"] == "tasks/cancel"
+
+
+class TestA2AClientCheckAvailable:
+    @pytest.mark.asyncio
+    async def test_check_available_success(self):
+        mock_resp = _mock_httpx_response({}, status_code=200)
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.check_available()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_check_available_not_200(self):
+        mock_resp = _mock_httpx_response({}, status_code=503)
+        mock_resp.status_code = 503
+        mock_http = _mock_async_client(mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.check_available()
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_available_connection_error(self):
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.check_available()
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_available_os_error(self):
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.get = AsyncMock(side_effect=OSError("network down"))
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            result = await client.check_available()
+
+        assert result is False
+
+
+class TestA2AClientSendSubscribe:
+    @pytest.mark.asyncio
+    async def test_send_subscribe_parses_sse(self):
+        """Test SSE parsing in send_subscribe."""
+
+        async def _fake_aiter_lines():
+            lines = [
+                "event:status",
+                'data:{"state":"working"}',
+                "event:result",
+                'data:{"state":"completed","output":"done"}',
+            ]
+            for line in lines:
+                yield line
+
+        mock_resp = AsyncMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.aiter_lines = _fake_aiter_lines
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.stream = MagicMock(return_value=mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            events = []
+            async for event in client.send_subscribe("test task"):
+                events.append(event)
+
+        assert len(events) == 2
+        assert events[0]["event"] == "status"
+        assert events[0]["data"]["state"] == "working"
+        assert events[1]["event"] == "result"
+
+    @pytest.mark.asyncio
+    async def test_send_subscribe_invalid_json_data(self):
+        """Non-JSON data lines should be passed as strings."""
+
+        async def _fake_aiter_lines():
+            lines = [
+                "event:log",
+                "data:not json at all",
+            ]
+            for line in lines:
+                yield line
+
+        mock_resp = AsyncMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.aiter_lines = _fake_aiter_lines
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.stream = MagicMock(return_value=mock_resp)
+
+        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+            client = A2AClient(A2AClientConfig(url="http://test"))
+            events = []
+            async for event in client.send_subscribe("task"):
+                events.append(event)
+
+        assert len(events) == 1
+        assert events[0]["data"] == "not json at all"

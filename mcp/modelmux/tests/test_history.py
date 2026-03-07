@@ -2,7 +2,7 @@
 
 import json
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from modelmux.history import (
     HistoryQuery,
@@ -367,3 +367,199 @@ class TestGetTrends:
         assert len(active) == 1
         assert active[0]["by_provider"]["codex"] == 1
         assert active[0]["by_provider"]["gemini"] == 1
+
+    def test_malformed_json_skipped(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        hf.write_text(
+            f'{json.dumps({"provider": "a", "status": "success", "ts": now - 30})}\n'
+            "not json\n"
+        )
+        with patch("modelmux.history._history_file", return_value=hf):
+            result = get_trends(hours=1)
+        assert result["total_entries"] == 1
+
+    def test_blank_lines_skipped(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        hf.write_text(
+            f'\n{json.dumps({"provider": "a", "status": "success", "ts": now - 30})}\n\n'
+        )
+        with patch("modelmux.history._history_file", return_value=hf):
+            result = get_trends(hours=1)
+        assert result["total_entries"] == 1
+
+    def test_oserror_returns_empty(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        hf.write_text("data\n")
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("builtins.open", side_effect=OSError("fail")),
+        ):
+            result = get_trends(hours=1)
+        assert result["buckets"] == []
+
+    def test_cost_tracking_with_token_usage(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        entries = [
+            {
+                "provider": "codex",
+                "status": "success",
+                "ts": now - 30,
+                "duration_seconds": 2.0,
+                "token_usage": {"input_tokens": 100, "output_tokens": 50},
+            },
+        ]
+        self._write_entries(hf, entries)
+        with patch("modelmux.history._history_file", return_value=hf):
+            result = get_trends(hours=1)
+        active = [b for b in result["buckets"] if b["count"] > 0]
+        assert len(active) == 1
+        # Cost should be computed (value depends on pricing, just check it exists)
+        assert "cost" in active[0]
+        assert "cumulative_cost" in active[0]
+
+    def test_cost_estimation_failure_handled(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        entries = [
+            {
+                "provider": "codex",
+                "status": "success",
+                "ts": now - 30,
+                "token_usage": {"input_tokens": 100, "output_tokens": 50},
+            },
+        ]
+        self._write_entries(hf, entries)
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("modelmux.costs.estimate_cost", side_effect=Exception("pricing error")),
+        ):
+            result = get_trends(hours=1)
+        # Should not crash, just skip cost
+        assert result["total_entries"] == 1
+
+
+class TestLogResultEdgeCases:
+    def test_routing_cache_invalidation(self, tmp_path):
+        hf = tmp_path / "history.jsonl"
+        mock_invalidate = MagicMock()
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("modelmux.routing.invalidate_routing_cache", mock_invalidate),
+        ):
+            log_result({"provider": "codex"})
+        mock_invalidate.assert_called_once()
+
+    def test_notification_failure_handled(self, tmp_path):
+        hf = tmp_path / "history.jsonl"
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("modelmux.notifications.notify_dispatch", side_effect=Exception("webhook fail")),
+        ):
+            # Should not raise
+            log_result({"provider": "codex"})
+        assert hf.exists()
+
+    def test_oserror_handled(self, tmp_path):
+        hf = tmp_path / "history.jsonl"
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("builtins.open", side_effect=OSError("disk full")),
+        ):
+            # Should not raise
+            log_result({"provider": "codex"})
+
+
+class TestGetHistoryStatsEdgeCases:
+    def _write_entries(self, path, entries):
+        lines = [json.dumps(e) for e in entries]
+        path.write_text("\n".join(lines) + "\n")
+
+    def test_malformed_json_skipped(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        hf.write_text(
+            f'{json.dumps({"provider": "a", "status": "success", "ts": now, "duration_seconds": 1.0})}\n'
+            "bad json\n"
+        )
+        with patch("modelmux.history._history_file", return_value=hf):
+            stats = get_history_stats()
+        assert stats["total"] == 1
+
+    def test_blank_lines_skipped(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        hf.write_text(
+            f'\n{json.dumps({"provider": "a", "status": "success", "ts": now, "duration_seconds": 1.0})}\n\n'
+        )
+        with patch("modelmux.history._history_file", return_value=hf):
+            stats = get_history_stats()
+        assert stats["total"] == 1
+
+    def test_oserror_returns_empty(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        hf.write_text("data\n")
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("builtins.open", side_effect=OSError("fail")),
+        ):
+            stats = get_history_stats()
+        assert stats["total"] == 0
+
+    def test_include_costs(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        entries = [
+            {
+                "provider": "codex",
+                "status": "success",
+                "ts": now,
+                "duration_seconds": 1.0,
+                "token_usage": {"input_tokens": 100, "output_tokens": 50},
+            },
+        ]
+        self._write_entries(hf, entries)
+        with patch("modelmux.history._history_file", return_value=hf):
+            stats = get_history_stats(include_costs=True)
+        assert stats["total"] == 1
+        assert "costs" in stats
+
+    def test_include_costs_no_token_entries(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        entries = [
+            {"provider": "codex", "status": "success", "ts": now, "duration_seconds": 1.0},
+        ]
+        self._write_entries(hf, entries)
+        with patch("modelmux.history._history_file", return_value=hf):
+            stats = get_history_stats(include_costs=True)
+        assert stats["total"] == 1
+        assert "costs" not in stats  # no token usage entries
+
+    def test_hours_filter_excludes_old(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        now = time.time()
+        entries = [
+            {"provider": "old", "status": "success", "ts": now - 7200, "duration_seconds": 1.0},
+            {"provider": "new", "status": "success", "ts": now, "duration_seconds": 2.0},
+        ]
+        self._write_entries(hf, entries)
+        with patch("modelmux.history._history_file", return_value=hf):
+            stats = get_history_stats(hours=1)
+        assert stats["total"] == 1
+        assert "new" in stats["by_provider"]
+        assert "old" not in stats["by_provider"]
+
+
+class TestReadHistoryEdgeCases:
+    def test_oserror_returns_empty(self, tmp_path):
+        hf = tmp_path / "h.jsonl"
+        hf.write_text("data\n")
+        with (
+            patch("modelmux.history._history_file", return_value=hf),
+            patch("builtins.open", side_effect=OSError("read error")),
+        ):
+            result = read_history()
+        assert result == []

@@ -1,11 +1,16 @@
 """Tests for the base adapter module (AdapterResult, TokenUsage, utilities)."""
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from modelmux.adapters.base import (
     AdapterResult,
     BaseAdapter,
     TokenUsage,
     is_turn_completed,
     sanitize_extra_args,
+    stream_subprocess,
 )
 
 
@@ -165,3 +170,156 @@ class TestBaseAdapter:
     def test_parse_token_usage_default(self):
         a = BaseAdapter()
         assert a.parse_token_usage([]) is None
+
+
+class _TestAdapter(BaseAdapter):
+    """Concrete adapter for testing BaseAdapter.run()."""
+
+    provider_name = "test"
+
+    def __init__(self, available=True, build_error=False):
+        self._available = available
+        self._build_error = build_error
+
+    def _binary_name(self):
+        return "echo"
+
+    def check_available(self):
+        return self._available
+
+    def build_command(self, prompt, workdir, sandbox="", session_id="", extra_args=None):
+        if self._build_error:
+            raise ValueError("bad command")
+        return ["echo", prompt]
+
+    def parse_output(self, lines):
+        text = "\n".join(lines)
+        return text, "sess-1", ""
+
+    def parse_token_usage(self, lines):
+        return TokenUsage(input_tokens=10, output_tokens=5, total_tokens=15)
+
+
+class TestBaseAdapterRun:
+    @pytest.mark.asyncio
+    async def test_not_available(self):
+        adapter = _TestAdapter(available=False)
+        result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "error"
+        assert "not found" in result.error
+
+    @pytest.mark.asyncio
+    async def test_build_command_error(self):
+        adapter = _TestAdapter(build_error=True)
+        result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "error"
+        assert "Failed to build command" in result.error
+
+    @pytest.mark.asyncio
+    async def test_file_not_found_error(self):
+        adapter = _TestAdapter()
+
+        def fake_stream(*a, **kw):
+            raise FileNotFoundError("echo not found")
+            yield  # make it a generator  # noqa: E501
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "error"
+        assert "not found" in result.error
+        assert result.duration_seconds >= 0
+
+    @pytest.mark.asyncio
+    async def test_generic_exception(self):
+        adapter = _TestAdapter()
+
+        def fake_stream(*a, **kw):
+            raise RuntimeError("boom")
+            yield  # noqa: E501
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "error"
+        assert "Subprocess error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_timeout_exit_code(self):
+        adapter = _TestAdapter()
+
+        def fake_stream(*a, **kw):
+            yield "partial output"
+            return 124  # timeout
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "timeout"
+        assert "Timed out" in result.error
+
+    @pytest.mark.asyncio
+    async def test_success(self):
+        adapter = _TestAdapter()
+
+        def fake_stream(*a, **kw):
+            yield "hello world"
+            return 0
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(prompt="hi", workdir="/tmp")
+        assert result.status == "success"
+        assert result.output == "hello world"
+        assert result.session_id == "sess-1"
+        assert result.token_usage is not None
+        assert result.token_usage.total_tokens == 15
+
+    @pytest.mark.asyncio
+    async def test_on_progress_callback(self):
+        adapter = _TestAdapter()
+        progress_msgs = []
+
+        def fake_stream(*a, **kw):
+            yield "line1"
+            yield "line2"
+            return 0
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(
+                prompt="hi", workdir="/tmp", on_progress=lambda m: progress_msgs.append(m)
+            )
+        assert result.status == "success"
+        assert "Running test CLI..." in progress_msgs
+        assert "line1" in progress_msgs
+        assert "line2" in progress_msgs
+
+    @pytest.mark.asyncio
+    async def test_sanitizes_extra_args(self):
+        adapter = _TestAdapter()
+
+        def fake_stream(*a, **kw):
+            yield "ok"
+            return 0
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            result = await adapter.run(
+                prompt="hi", workdir="/tmp", extra_args={"model": "--inject"}
+            )
+        assert result.status == "success"
+
+
+class TestStreamSubprocess:
+    def test_command_not_found(self):
+        with pytest.raises(FileNotFoundError, match="Command not found"):
+            gen = stream_subprocess(["nonexistent_binary_xyz_12345"])
+            next(gen)
+
+    def test_echo_command(self):
+        lines = list(stream_subprocess(["echo", "hello"]))
+        assert any("hello" in l for l in lines)
+
+    def test_env_overrides(self):
+        lines = list(
+            stream_subprocess(
+                ["env"],
+                env_overrides={"MODELMUX_TEST_VAR": "test_value_123"},
+            )
+        )
+        assert any("MODELMUX_TEST_VAR=test_value_123" in l for l in lines)

@@ -2,7 +2,7 @@
 
 English | [中文](docs/README_CN.md)
 
-Cross-platform multi-model AI collaboration server. Dispatch, broadcast, and orchestrate tasks across **Codex CLI**, **Gemini CLI**, **Claude Code CLI**, **Ollama**, and external **A2A agents** through a unified MCP interface — with built-in smart routing, failover, cost tracking, and multi-agent collaboration.
+Cross-platform multi-model AI collaboration server. Dispatch, broadcast, and orchestrate tasks across **Codex CLI**, **Gemini CLI**, **Claude Code CLI**, **Ollama**, **DashScope** (Qwen/Kimi/MiniMax), and external **A2A agents** through a unified MCP + CLI interface — with smart routing v4, exponential retry, cost tracking, and multi-agent collaboration.
 
 [![PyPI](https://img.shields.io/pypi/v/modelmux)](https://pypi.org/project/modelmux/)
 
@@ -16,6 +16,7 @@ Different AI models have different strengths:
 | **Gemini** | Frontend/UI, multimodal, broad knowledge |
 | **Claude** | Architecture, reasoning, code review |
 | **Ollama** | Free local inference (DeepSeek, Llama, Qwen, etc.) |
+| **DashScope** | Chinese models (Qwen, Kimi, MiniMax, GLM) |
 
 modelmux lets any MCP-compatible platform orchestrate tasks across all of them — getting the best of each, with automatic failover, cost tracking, and true multi-agent collaboration.
 
@@ -25,10 +26,11 @@ modelmux lets any MCP-compatible platform orchestrate tasks across all of them �
 MCP Client (Claude Code / Codex CLI / Gemini CLI / IDE)
     │
     └── modelmux (MCP server, stdio)
-        ├── mux_dispatch     → single provider (auto-route, failover)
+        ├── mux_dispatch     → single provider (auto-route, failover, retry)
         ├── mux_broadcast    → parallel multi-provider + comparison
         ├── mux_collaborate  → iterative multi-agent collaboration (A2A)
         ├── mux_workflow     → multi-step pipeline chains
+        ├── mux_feedback     → user quality ratings (drives routing)
         ├── mux_history      → analytics, cost tracking
         └── mux_check        → availability & config status
             │
@@ -36,8 +38,12 @@ MCP Client (Claude Code / Codex CLI / Gemini CLI / IDE)
             ├── GeminiAdapter     → gemini -p -o stream-json
             ├── ClaudeAdapter     → claude -p
             ├── OllamaAdapter     → ollama run <model>
+            ├── DashScopeAdapter  → OpenAI-compatible API
             ├── A2ARemoteAdapter  → external A2A agents (httpx)
             └── Custom Adapters   → user-defined plugins
+
+CLI (modelmux dispatch / broadcast)
+    └── Same adapters + smart routing, JSON output for scripts & CI
 
 A2A HTTP Server (modelmux a2a-server)
     ├── GET  /.well-known/agent.json   → Agent Card
@@ -211,18 +217,28 @@ mux_dispatch(provider="my-agent", task="Review this PR")
 ## CLI Commands
 
 ```bash
+# Server modes
 modelmux              # Start MCP server (stdio)
 modelmux a2a-server   # Start A2A HTTP server
 modelmux dashboard    # Web monitoring dashboard (http://127.0.0.1:41521)
+
+# Direct task execution (JSON output, for scripts & CI)
+modelmux dispatch "Review this code"                       # auto-route
+modelmux dispatch -p codex -m gpt-5.4 "Fix the bug"       # explicit provider
+modelmux dispatch -p gemini --max-retries 3 "Analyze"      # with retry
+cat diff.txt | modelmux dispatch -p auto                   # pipe from stdin
+modelmux broadcast "Review this API" --providers codex gemini  # parallel
+
+# Management
+modelmux check        # Check CLI availability
+modelmux status -w    # Live dispatch monitor
+modelmux history --stats --costs   # Statistics with cost breakdown
 modelmux benchmark    # Run provider benchmark suite
+modelmux export --format csv       # Export to CSV/JSON/Markdown
+
+# Setup
 modelmux init         # Interactive configuration wizard
 modelmux config       # TUI configuration panel (requires modelmux[tui])
-modelmux check        # Check CLI availability
-modelmux status       # Monitor active dispatches
-modelmux status -w    # Live watch mode (updates every second)
-modelmux history      # View recent dispatches
-modelmux history --stats --costs   # Statistics with cost breakdown
-modelmux export --format csv       # Export history to CSV/JSON/Markdown
 modelmux version      # Show version
 ```
 
@@ -302,8 +318,10 @@ All results follow the canonical schema:
 
 | Feature | Description |
 |---------|-------------|
-| **Smart Routing** | Auto-route by task keywords + history scoring, auto-exclude caller |
-| **Failover** | Auto-retry with next available provider on failure |
+| **Smart Routing v4** | Keyword + history + benchmark + user feedback scoring |
+| **Failover + Retry** | Exponential backoff retry, then auto-failover to next provider |
+| **CLI Dispatch** | `modelmux dispatch` / `broadcast` for scripts, CI, and pipelines |
+| **GitHub Actions** | Reusable composite action for automated PR code review |
 | **Profiles** | Named configs for model/API overrides (budget, china, etc.) |
 | **Multi-turn** | Session continuity via native CLI session IDs |
 | **Broadcast** | Parallel dispatch to multiple providers with comparison |
@@ -311,10 +329,31 @@ All results follow the canonical schema:
 | **Workflows** | Multi-step pipeline chains with variable substitution |
 | **Cost Tracking** | Token usage extraction + per-model cost estimation |
 | **A2A Protocol** | HTTP server + client for agent-to-agent interop |
+| **User Feedback** | Rate results 1-5 to improve routing quality over time |
+| **Web Dashboard** | Real-time monitoring with charts and feedback panel |
 | **Policy Engine** | Rate limits, provider/sandbox blocking |
-| **Audit Logging** | Full JSONL audit trail for every dispatch |
-| **Real-time Status** | Live dispatch monitoring via CLI or status files |
-| **Custom Plugins** | User-defined adapters via config |
+| **Custom Plugins** | User-defined adapters + A2A remote agents via config |
+
+## GitHub Actions
+
+Automated PR code review using modelmux:
+
+```yaml
+# .github/workflows/review.yml
+on: [pull_request]
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pure-maple/modelmux/.github/actions/review@main
+        with:
+          provider: auto  # or codex, gemini, claude, dashscope
+```
+
+The action extracts the PR diff, dispatches it for review, and posts the result as a PR comment.
 
 ## Design Decisions
 

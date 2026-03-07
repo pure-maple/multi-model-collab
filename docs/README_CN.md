@@ -2,7 +2,7 @@
 
 [English](../README.md) | 中文
 
-跨平台多模型 AI 协作服务器。通过统一的 MCP 接口，将任务分发、广播、编排到 **Codex CLI**、**Gemini CLI**、**Claude Code CLI**、**Ollama** 和外部 **A2A Agent** —— 内置智能路由、自动容错、成本追踪和多 Agent 协作。
+跨平台多模型 AI 协作服务器。通过统一的 MCP + CLI 接口，将任务分发、广播、编排到 **Codex CLI**、**Gemini CLI**、**Claude Code CLI**、**Ollama**、**DashScope**（Qwen/Kimi/MiniMax）和外部 **A2A Agent** —— 内置智能路由 v4、指数退避重试、成本追踪和多 Agent 协作。
 
 [![PyPI](https://img.shields.io/pypi/v/modelmux)](https://pypi.org/project/modelmux/)
 
@@ -16,6 +16,7 @@
 | **Gemini** | 前端/UI、多模态、广泛知识 |
 | **Claude** | 架构设计、深度推理、代码审查 |
 | **Ollama** | 免费本地推理（DeepSeek、Llama、Qwen 等） |
+| **DashScope** | 国产模型（Qwen、Kimi、MiniMax、GLM） |
 
 modelmux 让任何 MCP 兼容平台都能跨模型编排任务——取各家之长，配合自动容错、成本追踪和真正的多 Agent 协作。
 
@@ -25,10 +26,11 @@ modelmux 让任何 MCP 兼容平台都能跨模型编排任务——取各家之
 MCP 客户端（Claude Code / Codex CLI / Gemini CLI / IDE）
     │
     └── modelmux（MCP 服务器，stdio）
-        ├── mux_dispatch     → 单 provider 分发（智能路由、自动容错）
+        ├── mux_dispatch     → 单 provider 分发（智能路由、容错、重试）
         ├── mux_broadcast    → 并行多 provider + 对比分析
         ├── mux_collaborate  → 迭代式多 Agent 协作（A2A 协议）
         ├── mux_workflow     → 多步骤流水线
+        ├── mux_feedback     → 用户质量评分（驱动路由优化）
         ├── mux_history      → 历史分析、成本追踪
         └── mux_check        → 可用性与配置状态
             │
@@ -36,8 +38,12 @@ MCP 客户端（Claude Code / Codex CLI / Gemini CLI / IDE）
             ├── GeminiAdapter     → gemini -p -o stream-json
             ├── ClaudeAdapter     → claude -p
             ├── OllamaAdapter     → ollama run <model>
+            ├── DashScopeAdapter  → OpenAI 兼容 API
             ├── A2ARemoteAdapter  → 外部 A2A Agent（httpx）
             └── 自定义适配器       → 用户插件
+
+CLI（modelmux dispatch / broadcast）
+    └── 同一套适配器 + 智能路由，JSON 输出，适合脚本和 CI
 
 A2A HTTP 服务器（modelmux a2a-server）
     ├── GET  /.well-known/agent.json   → Agent Card
@@ -209,18 +215,28 @@ mux_dispatch(provider="my-agent", task="审查这个 PR")
 ## CLI 命令
 
 ```bash
+# 服务模式
 modelmux              # 启动 MCP 服务器（stdio）
 modelmux a2a-server   # 启动 A2A HTTP 服务器
 modelmux dashboard    # Web 监控面板（http://127.0.0.1:41521）
-modelmux benchmark    # 运行 provider 基准测试
-modelmux init         # 交互式配置向导
-modelmux config       # TUI 配置面板（需要 modelmux[tui]）
+
+# 直接任务执行（JSON 输出，适合脚本和 CI）
+modelmux dispatch "审查这段代码"                            # 智能路由
+modelmux dispatch -p codex -m gpt-5.4 "修复这个 bug"       # 指定 provider
+modelmux dispatch -p gemini --max-retries 3 "分析架构"      # 带重试
+cat diff.txt | modelmux dispatch -p auto                   # 从 stdin 读取
+modelmux broadcast "审查 API" --providers codex gemini      # 并行广播
+
+# 管理
 modelmux check        # 检查 CLI 可用性
-modelmux status       # 监控活跃分发任务
-modelmux status -w    # 实时刷新模式（每秒更新）
-modelmux history      # 查看最近分发记录
+modelmux status -w    # 实时分发监控
 modelmux history --stats --costs   # 统计 + 成本分析
-modelmux export --format csv       # 导出历史为 CSV/JSON/Markdown
+modelmux benchmark    # 运行 provider 基准测试
+modelmux export --format csv       # 导出历史
+
+# 配置
+modelmux init         # 交互式配置向导
+modelmux config       # TUI 配置面板
 modelmux version      # 显示版本
 ```
 

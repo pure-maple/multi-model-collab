@@ -412,3 +412,78 @@ def test_broadcast_all_fail_exits_1(capsys):
         _cmd_broadcast(ns)
 
     assert exc_info.value.code == 1
+
+
+# ── feedback tests ──
+
+
+def _feedback_ns(**overrides):
+    """Build a namespace for feedback with sensible defaults."""
+    ns = MagicMock()
+    defaults = {
+        "run_id": "",
+        "provider": "",
+        "rating": 0,
+        "comment": "",
+        "category": "",
+        "list": False,
+        "hours": 0,
+    }
+    defaults.update(overrides)
+    for k, v in defaults.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def test_feedback_submit(capsys, tmp_path):
+    """feedback --run-id --provider --rating should log feedback."""
+    from modelmux.cli import _cmd_feedback
+
+    ns = _feedback_ns(run_id="abc123", provider="codex", rating=4, comment="great")
+
+    with patch("modelmux.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"):
+        _cmd_feedback(ns)
+
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["status"] == "ok"
+    assert result["run_id"] == "abc123"
+    assert result["rating"] == 4
+
+
+def test_feedback_missing_args_exits():
+    """feedback without required args should exit 1."""
+    from modelmux.cli import _cmd_feedback
+
+    ns = _feedback_ns()  # all empty
+
+    with pytest.raises(SystemExit) as exc_info:
+        _cmd_feedback(ns)
+    assert exc_info.value.code == 1
+
+
+def test_feedback_invalid_rating_exits(tmp_path):
+    """feedback with rating outside 1-5 should exit 1."""
+    from modelmux.cli import _cmd_feedback
+
+    ns = _feedback_ns(run_id="x", provider="codex", rating=7)
+
+    with (
+        patch("modelmux.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        _cmd_feedback(ns)
+    assert exc_info.value.code == 1
+
+
+def test_feedback_list_empty(capsys):
+    """feedback --list with no data should show message."""
+    from modelmux.cli import _cmd_feedback
+
+    ns = _feedback_ns(**{"list": True})
+
+    with patch("modelmux.feedback.read_feedback", return_value=[]):
+        _cmd_feedback(ns)
+
+    captured = capsys.readouterr()
+    assert "No feedback" in captured.out

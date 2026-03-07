@@ -5,6 +5,7 @@ Usage:
   modelmux a2a-server   Start the A2A HTTP server
   modelmux dispatch     Run a single task via a provider (JSON output)
   modelmux broadcast    Broadcast a task to multiple providers in parallel
+  modelmux feedback     Submit or view user feedback for routing
   modelmux init         Interactive configuration wizard
   modelmux config       TUI configuration panel (requires modelmux[tui])
   modelmux check        Quick CLI availability check
@@ -638,6 +639,74 @@ def _cmd_broadcast(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def _cmd_feedback(args: argparse.Namespace) -> None:
+    """Submit or view user feedback."""
+    import json
+
+    if getattr(args, "list", False):
+        from modelmux.feedback import read_feedback
+
+        hours = getattr(args, "hours", 0)
+        provider = getattr(args, "provider", "")
+        entries = read_feedback(hours=hours, provider=provider)
+        if not entries:
+            print("  No feedback entries found.")
+            return
+        print("modelmux — User Feedback")
+        print("-" * 50)
+        for e in entries[-20:]:
+            stars = "*" * e.get("rating", 0) + "." * (5 - e.get("rating", 0))
+            prov = e.get("provider", "?")
+            comment = e.get("comment", "")
+            rid = e.get("run_id", "?")[:8]
+            print(f"  [{stars}] {prov:8s} {rid}  {comment[:60]}")
+        print()
+        return
+
+    # Submit feedback
+    run_id = getattr(args, "run_id", "")
+    provider = getattr(args, "provider", "")
+    rating = getattr(args, "rating", 0)
+    comment = getattr(args, "comment", "")
+    category = getattr(args, "category", "")
+
+    if not run_id or not provider or not rating:
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": "Required: --run-id, --provider, --rating",
+                }
+            ),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    from modelmux.feedback import log_feedback
+
+    try:
+        log_feedback(
+            run_id=run_id,
+            provider=provider,
+            rating=rating,
+            category=category,
+            comment=comment,
+        )
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "run_id": run_id,
+                    "provider": provider,
+                    "rating": rating,
+                }
+            )
+        )
+    except ValueError as e:
+        print(json.dumps({"status": "error", "error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+
 def _cmd_version() -> None:
     from modelmux import __version__
 
@@ -872,6 +941,30 @@ def main() -> None:
         help="Task prompt (reads from stdin if omitted)",
     )
 
+    # modelmux feedback
+    fb_p = subparsers.add_parser(
+        "feedback", help="Submit or view user feedback for routing"
+    )
+    fb_p.add_argument("--run-id", default="", help="Run ID to rate", dest="run_id")
+    fb_p.add_argument(
+        "--provider", default="", help="Provider that produced the result"
+    )
+    fb_p.add_argument(
+        "--rating", type=int, default=0, help="Rating 1-5 (1=terrible, 5=excellent)"
+    )
+    fb_p.add_argument("--comment", default="", help="Optional comment")
+    fb_p.add_argument(
+        "--category",
+        default="",
+        help="Task category (analysis/generation/reasoning/language)",
+    )
+    fb_p.add_argument(
+        "--list", action="store_true", help="List recent feedback entries"
+    )
+    fb_p.add_argument(
+        "--hours", type=float, default=0, help="Filter by time window (for --list)"
+    )
+
     # modelmux version
     subparsers.add_parser("version", help="Show version")
 
@@ -901,6 +994,8 @@ def main() -> None:
         _cmd_dispatch(args)
     elif args.command == "broadcast":
         _cmd_broadcast(args)
+    elif args.command == "feedback":
+        _cmd_feedback(args)
     elif args.command == "version":
         _cmd_version()
     else:

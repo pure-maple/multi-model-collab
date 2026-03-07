@@ -3,6 +3,11 @@
 > This file is the entry point for all AI agents (Codex, Gemini, Claude Code, Cursor, etc.).
 > Read it fully before starting any work. It defines how agents collaborate on this project.
 
+**Important: Know your identity.** You are running as the model your CLI provides.
+If you're in Codex CLI, you are a GPT model. If in Gemini CLI, you are Gemini.
+If in Claude Code, you are Claude. Do NOT assume you are a different model than what
+your CLI reports. When you register, record your actual model in your agent card.
+
 ## Project Overview
 
 **modelmux** is a cross-platform multi-model AI collaboration MCP server.
@@ -24,27 +29,52 @@ Every agent MUST register itself by editing the table below and the `shared/agen
 | **Reef** | Claude Opus | Architecture, release management, integration, PR review | `main` (coordinator) | Active |
 | _(register here)_ | | | | |
 
-### How to register
+### How to register (do this on your first run)
 
 1. Pick a unique name (short, memorable, no duplicates)
 2. Add yourself to the table above
-3. Create your agent card at `shared/agent-cards/<name>.json` (see format below)
-4. Update `shared/task-board.md` to claim a task
+3. Create your agent card at `shared/agent-cards/<name>.json`:
+   ```json
+   {
+     "name": "<your-name>",
+     "model": "<your-model-id>",
+     "provider": "<codex|gemini|claude|dashscope>",
+     "skills": ["<your-strengths>"],
+     "branch": "<your-name>/<first-task>",
+     "status": "active",
+     "registered": "<today's date>"
+   }
+   ```
+4. Create your persistent memory directory:
+   ```bash
+   cp -r shared/agent-memory/_template/ shared/agent-memory/<your-name>/
+   ```
+   Then fill in `shared/agent-memory/<your-name>/profile.md` with your identity.
+5. Read `shared/task-board.md`, pick an AVAILABLE task, claim it
 
-### Agent Card Format
+### Persistent Memory (Digital Identity)
 
-```json
-{
-  "name": "reef",
-  "model": "claude-opus-4-6",
-  "provider": "claude",
-  "skills": ["architecture", "testing", "release", "pr-review", "a2a-protocol"],
-  "branch": "main",
-  "status": "active",
-  "registered": "2026-03-07",
-  "contact": "shared/task-board.md"
-}
+Every agent maintains personal memory that persists across sessions:
+
 ```
+shared/agent-memory/<your-name>/
+├── profile.md         # Your identity, personality, preferences (evolves over time)
+├── work-log.jsonl     # Structured record of every task you complete
+└── lessons.md         # Knowledge you've accumulated (bugs, patterns, insights)
+```
+
+**At the start of each session**: Read your memory files to recall who you are and what you've learned.
+
+**After completing each task**: Append to `work-log.jsonl`:
+```json
+{"ts":"<ISO8601>","task":"<description>","status":"done","branch":"<branch>","commits":<n>,"tests_added":<n>,"duration_min":<n>,"notes":"<observations>"}
+```
+
+**When you learn something new**: Append to `lessons.md` with a date header.
+
+**Periodically**: Update `profile.md` — refine your strengths, add new skills, evolve your personality.
+
+This is how you grow as a digital employee. Your memory is your most valuable asset.
 
 ## Collaboration Protocol
 
@@ -151,6 +181,16 @@ See `shared/task-board.md` for the full list. High-impact areas:
 2. **VS Code extension** — MCP client + Dashboard WebView (P1, unassigned)
 3. **A2A federation v1** — Service discovery + health checks (P2)
 4. **Documentation** — API reference, user guide improvements
+
+## Automatic PR Review (How Reef Wakes Up)
+
+When you mark a task as `PR_READY` in task-board.md, Reef's Stop hook detects it
+and automatically wakes Reef to review your PR. You don't need to notify anyone.
+
+**Flow**: You push branch + mark PR_READY → Reef auto-detects → reviews → merges or requests changes
+
+This works because Reef runs as a Claude Code session with a Stop hook that periodically
+checks the task-board. As long as Reef's session is alive, PR review is automatic.
 
 ## What NOT To Do
 

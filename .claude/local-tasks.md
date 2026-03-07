@@ -2,9 +2,11 @@
 
 ## Active
 
-- [ ] v0.28.0 发版: tag + push → auto-publish to PyPI
+_(none)_
 
 ## Done
+
+- [x] v0.28.0 发版: tag + push → auto-publish to PyPI
 
 - [x] CLI dispatch --failover + dashboard SSE real-time updates
 - [x] broadcast --compare for CLI similarity analysis
@@ -22,5 +24,4 @@
 
 ## Backlog
 
-- [ ] Adapter cache thread safety: asyncio.Lock for adapter_cache in server.py (low priority — GIL makes it safe)
-- [ ] VS Code 扩展（MCP 客户端 + Dashboard WebView）
+_(moved to shared/task-board.md)_

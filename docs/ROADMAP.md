@@ -23,7 +23,7 @@
 | POST / (tasks/sendSubscribe) | SSE 流式推送（支持 Push Notification） |
 
 ### CLI 命令
-`modelmux` / `a2a-server` / `dispatch` / `broadcast` / `feedback` / `init` / `config` / `check` / `status` / `history` / `export` / `benchmark` / `dashboard` / `version`
+`modelmux` / `a2a-server` / `dispatch` / `broadcast` / `feedback` / `init` / `config` / `check` / `status` / `history` / `export` / `benchmark` / `dashboard` / `clean` / `version`
 
 ### Provider 适配器
 codex / gemini / claude / ollama / dashscope / A2A remote / 自定义插件

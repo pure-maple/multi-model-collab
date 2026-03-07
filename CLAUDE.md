@@ -59,7 +59,7 @@ Web Dashboard (modelmux dashboard --port 41521)
   ├── GET  /api/feedback    → user feedback scores
   └── GET  /api/events      → SSE stream (2s push)
 
-CLI (modelmux dispatch / broadcast / feedback / profile)
+CLI (modelmux dispatch / broadcast / feedback / profile / clean)
   └── Same adapters + smart routing, JSON output for scripts & CI
 ```
 
@@ -96,7 +96,7 @@ CLI (modelmux dispatch / broadcast / feedback / profile)
 | `benchmark.py` | Provider benchmark suite (standardized tasks + scoring) |
 | `export.py` | Export history to CSV/JSON/Markdown reports |
 | `log.py` | Centralized logging config (level + JSON format via env vars) |
-| `cli.py` | CLI entry point (dispatch/broadcast/feedback/profile/check/status/history) |
+| `cli.py` | CLI entry point (dispatch/broadcast/feedback/profile/clean/check/status/history) |
 
 ## Dev Workflow
 

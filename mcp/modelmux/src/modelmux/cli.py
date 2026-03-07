@@ -74,23 +74,67 @@ def _cmd_check(args: argparse.Namespace) -> None:
             "path": path or "",
         }
 
+    avail_count = sum(1 for p in providers_data.values() if p["available"])
+
     if use_json:
         output = {
             "version": __version__,
             "providers": providers_data,
-            "available_count": sum(
-                1 for p in providers_data.values() if p["available"]
-            ),
+            "available_count": avail_count,
         }
+        # Add config info to JSON
+        try:
+            from modelmux.config import load_config
+
+            config = load_config()
+            output["active_profile"] = config.active_profile
+            output["profiles"] = list(config.profiles.keys())
+            output["routing_rules"] = len(config.routing_rules)
+        except Exception:
+            pass
         print(json.dumps(output, indent=2))
     else:
         print(f"modelmux v{__version__}")
         print()
+        print("Providers")
         for name, info in providers_data.items():
             if info["available"]:
                 print(f"  \033[0;32m[+]\033[0m {name:8s} {info['path']}")
             else:
                 print(f"  \033[1;33m[-]\033[0m {name:8s} not found")
+
+        # Config summary
+        try:
+            from modelmux.config import load_config
+
+            config = load_config()
+            print()
+            print("Config")
+            if config.profiles:
+                names = ", ".join(config.profiles.keys())
+                print(f"  Profiles: {names}")
+                if config.active_profile != "default":
+                    print(f"  Active:   {config.active_profile}")
+            if config.routing_rules:
+                print(f"  Routing rules: {len(config.routing_rules)}")
+        except Exception:
+            pass
+
+        # History summary
+        try:
+            from modelmux.history import get_history_stats
+
+            stats = get_history_stats(hours=24)
+            if stats.get("total", 0) > 0:
+                print()
+                print("Last 24h")
+                print(f"  Dispatches: {stats['total']}")
+                for prov, ps in stats.get("by_provider", {}).items():
+                    rate = ps.get("success_rate", 0)
+                    print(f"  {prov:8s}  {ps['calls']} calls  {rate:.0f}% ok")
+        except Exception:
+            pass
+
         print()
 
 

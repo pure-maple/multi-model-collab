@@ -4,6 +4,7 @@ Usage:
   modelmux              Start the MCP server (stdio transport)
   modelmux a2a-server   Start the A2A HTTP server
   modelmux dispatch     Run a single task via a provider (JSON output)
+  modelmux broadcast    Broadcast a task to multiple providers in parallel
   modelmux init         Interactive configuration wizard
   modelmux config       TUI configuration panel (requires modelmux[tui])
   modelmux check        Quick CLI availability check
@@ -366,42 +367,62 @@ def _cmd_a2a_server(args: argparse.Namespace) -> None:
     server.run()
 
 
-def _cmd_dispatch(args: argparse.Namespace) -> None:
-    """Run a single dispatch from the CLI and print JSON result."""
-    import asyncio
-    import json
-
+def _get_available_adapters():
+    """Return (all_adapters, available_names) for CLI commands."""
     from modelmux.adapters import get_all_adapters
     from modelmux.adapters.base import BaseAdapter
-    from modelmux.routing import smart_route
 
-    provider = getattr(args, "provider", "auto")
-    model = getattr(args, "model", "")
-    sandbox = getattr(args, "sandbox", "read-only")
-    timeout = getattr(args, "timeout", 300)
-    workdir = getattr(args, "workdir", ".")
-    task_parts = getattr(args, "task", [])
-
-    # Task from positional args or stdin
-    if task_parts:
-        task = " ".join(task_parts)
-    else:
-        task = sys.stdin.read().strip()
-
-    if not task:
-        print(
-            json.dumps({"status": "error", "error": "No task provided"}),
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Find available providers
     all_adapters = get_all_adapters()
     available: list[str] = []
     for name, cls_or_inst in all_adapters.items():
         adapter = cls_or_inst if isinstance(cls_or_inst, BaseAdapter) else cls_or_inst()
         if adapter.check_available():
             available.append(name)
+    return all_adapters, available
+
+
+def _resolve_adapter(all_adapters, name):
+    """Get an adapter instance by name."""
+    from modelmux.adapters.base import BaseAdapter
+
+    cls_or_inst = all_adapters[name]
+    return cls_or_inst if isinstance(cls_or_inst, BaseAdapter) else cls_or_inst()
+
+
+def _read_task(args) -> str:
+    """Read task from positional args or stdin."""
+    import json
+
+    task_parts = getattr(args, "task", [])
+    if task_parts:
+        return " ".join(task_parts)
+    task = sys.stdin.read().strip()
+    if not task:
+        print(
+            json.dumps({"status": "error", "error": "No task provided"}),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return task
+
+
+def _cmd_dispatch(args: argparse.Namespace) -> None:
+    """Run a single dispatch from the CLI and print JSON result."""
+    import asyncio
+    import json
+    import time
+
+    from modelmux.routing import smart_route
+
+    task = _read_task(args)
+    provider = getattr(args, "provider", "auto")
+    model = getattr(args, "model", "")
+    sandbox = getattr(args, "sandbox", "read-only")
+    timeout = getattr(args, "timeout", 300)
+    workdir = getattr(args, "workdir", ".")
+    max_retries = max(1, min(getattr(args, "max_retries", 1), 5))
+
+    all_adapters, available = _get_available_adapters()
 
     if not available:
         print(
@@ -415,9 +436,7 @@ def _cmd_dispatch(args: argparse.Namespace) -> None:
     if provider not in available:
         provider = available[0]
 
-    # Get adapter instance
-    cls_or_inst = all_adapters[provider]
-    adapter = cls_or_inst if isinstance(cls_or_inst, BaseAdapter) else cls_or_inst()
+    adapter = _resolve_adapter(all_adapters, provider)
 
     extra: dict = {}
     if model:
@@ -433,10 +452,105 @@ def _cmd_dispatch(args: argparse.Namespace) -> None:
         )
     )
 
+    # Same-provider retry with exponential backoff
+    if result.status in ("error", "timeout") and max_retries > 1:
+        for attempt in range(2, max_retries + 1):
+            backoff = 2 ** (attempt - 1)
+            print(
+                f"Retry {attempt}/{max_retries} in {backoff}s...",
+                file=sys.stderr,
+            )
+            time.sleep(backoff)
+            result = asyncio.run(
+                adapter.run(
+                    prompt=task,
+                    workdir=workdir,
+                    sandbox=sandbox,
+                    timeout=timeout,
+                    extra_args=extra if extra else None,
+                )
+            )
+            if result.status not in ("error", "timeout"):
+                break
+
     output = json.dumps(result.to_dict(), ensure_ascii=False)
     print(output)
 
     if result.status != "success":
+        sys.exit(1)
+
+
+def _cmd_broadcast(args: argparse.Namespace) -> None:
+    """Broadcast a task to multiple providers in parallel."""
+    import asyncio
+    import json
+
+    task = _read_task(args)
+    providers_arg = getattr(args, "providers", None)
+    model = getattr(args, "model", "")
+    sandbox = getattr(args, "sandbox", "read-only")
+    timeout = getattr(args, "timeout", 300)
+    workdir = getattr(args, "workdir", ".")
+
+    all_adapters, available = _get_available_adapters()
+
+    if not available:
+        print(
+            json.dumps({"status": "error", "error": "No providers available"}),
+        )
+        sys.exit(1)
+
+    # Resolve target providers
+    if providers_arg:
+        targets = [p for p in providers_arg if p in available]
+        if not targets:
+            targets = available
+    else:
+        targets = available
+
+    extra: dict = {}
+    if model:
+        extra["model"] = model
+
+    async def run_all():
+        tasks = []
+        for name in targets:
+            adapter = _resolve_adapter(all_adapters, name)
+            tasks.append(
+                adapter.run(
+                    prompt=task,
+                    workdir=workdir,
+                    sandbox=sandbox,
+                    timeout=timeout,
+                    extra_args=extra if extra else None,
+                )
+            )
+        return await asyncio.gather(*tasks, return_exceptions=True)
+
+    results_raw = asyncio.run(run_all())
+
+    results = []
+    for i, r in enumerate(results_raw):
+        if isinstance(r, Exception):
+            results.append(
+                {
+                    "provider": targets[i],
+                    "status": "error",
+                    "error": str(r),
+                }
+            )
+        else:
+            results.append(r.to_dict())
+
+    output = json.dumps(
+        {"results": results, "providers": targets},
+        ensure_ascii=False,
+        indent=2,
+    )
+    print(output)
+
+    # Exit 1 if all failed
+    if all(r.get("status") != "success" for r in results):
         sys.exit(1)
 
 
@@ -603,6 +717,50 @@ def main() -> None:
         help="Working directory (default: current dir)",
     )
     disp_p.add_argument(
+        "--max-retries",
+        "-r",
+        type=int,
+        default=1,
+        dest="max_retries",
+        help="Max attempts for same provider (default: 1, max: 5)",
+    )
+    disp_p.add_argument(
+        "task",
+        nargs="*",
+        help="Task prompt (reads from stdin if omitted)",
+    )
+
+    # modelmux broadcast
+    bcast_p = subparsers.add_parser(
+        "broadcast",
+        help="Broadcast a task to multiple providers in parallel",
+    )
+    bcast_p.add_argument(
+        "--providers",
+        nargs="+",
+        help="Providers to use (default: all available)",
+    )
+    bcast_p.add_argument("--model", "-m", default="", help="Model override for all")
+    bcast_p.add_argument(
+        "--sandbox",
+        choices=["read-only", "write", "full"],
+        default="read-only",
+        help="Sandbox level (default: read-only)",
+    )
+    bcast_p.add_argument(
+        "--timeout",
+        "-t",
+        type=int,
+        default=300,
+        help="Timeout per provider in seconds (default: 300)",
+    )
+    bcast_p.add_argument(
+        "--workdir",
+        "-w",
+        default=".",
+        help="Working directory (default: current dir)",
+    )
+    bcast_p.add_argument(
         "task",
         nargs="*",
         help="Task prompt (reads from stdin if omitted)",
@@ -635,6 +793,8 @@ def main() -> None:
         _cmd_dashboard(args)
     elif args.command == "dispatch":
         _cmd_dispatch(args)
+    elif args.command == "broadcast":
+        _cmd_broadcast(args)
     elif args.command == "version":
         _cmd_version()
     else:

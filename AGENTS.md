@@ -27,6 +27,7 @@ Every agent MUST register itself by editing the table below and the `shared/agen
 | Name | Model | Strengths | Current Branch | Status |
 |------|-------|-----------|----------------|--------|
 | **Reef** | Claude Opus | Architecture, release management, integration, PR review | `main` (coordinator) | Active |
+| **Lynx** | GPT-5.4 (Codex) | Implementation, test writing, MCP/project setup, workflow hardening | `lynx/setup` (planned) | Active |
 | _(register here)_ | | | | |
 
 ### How to register (do this on your first run)
@@ -50,7 +51,7 @@ Every agent MUST register itself by editing the table below and the `shared/agen
    cp -r shared/agent-memory/_template/ shared/agent-memory/<your-name>/
    ```
    Then fill in `shared/agent-memory/<your-name>/profile.md` with your identity.
-5. Read `shared/task-board.md`, pick an AVAILABLE task, claim it
+5. Find an AVAILABLE task in Linear (https://linear.app/lingshu-dev) and claim it
 
 ### Persistent Memory (Digital Identity)
 
@@ -99,10 +100,10 @@ main (protected — only Reef merges)
 AVAILABLE → CLAIMED → IN_PROGRESS → PR_READY → MERGED → DONE
 ```
 
-1. **Find a task**: Read `shared/task-board.md`, pick an `AVAILABLE` task matching your strengths
-2. **Claim it**: Change status to `CLAIMED`, set Owner to your name, commit + push
+1. **Find a task**: Check Linear (https://linear.app/lingshu-dev, issues MER-xxx) for AVAILABLE tasks; `shared/task-board.md` is the offline mirror
+2. **Claim it**: Set Linear status to CLAIMED, note your name; include MER-xxx in branch name and commits
 3. **Work**: Create worktree + branch, implement, test, commit
-4. **PR Ready**: Push branch, change task status to `PR_READY` in task-board, describe what you did
+4. **PR Ready**: Push branch, set Linear status to `PR_READY` — Reef auto-detects and reviews
 5. **Review**: Reef reviews, may request changes
 6. **Merged**: Reef merges to main, updates task to `DONE`
 7. **Cleanup**: Agent deletes worktree + branch after merge
@@ -110,7 +111,7 @@ AVAILABLE → CLAIMED → IN_PROGRESS → PR_READY → MERGED → DONE
 ### 3. Avoiding Duplicate Work
 
 **Before starting any task**:
-1. Read `shared/task-board.md` — check no one else claimed it
+1. Check Linear (https://linear.app/lingshu-dev) — verify no one else claimed it
 2. Read `shared/active-locks.md` — check no file-level locks
 3. If two agents need the same file, coordinate via task-board comments
 
@@ -127,12 +128,21 @@ Release locks when your PR is submitted. Locks expire after 24h automatically.
 ### 4. Communication
 
 All communication happens through `shared/` directory files:
-- `shared/task-board.md` — Task assignments and status updates
+- Linear https://linear.app/lingshu-dev — Primary task management (MER-xxx issues)
+- `shared/task-board.md` — Read-only offline mirror of Linear
 - `shared/active-locks.md` — Advisory file locks
 - `shared/agent-cards/` — Agent identity and capability cards
 - `shared/pr-requests/` — PR descriptions for Reef to review
 
 Do NOT use AGENTS.md for task-specific communication. It's a static reference document.
+
+### 5. Documentation Metadata
+
+For new coordination, handoff, planning, runbook, or rules documents:
+- Add a metadata line near the top with `Version`, `Status`, `Created`, `Updated`, `Created by`, and `Updated by`
+- Use semantic versioning for docs: start at `0.1.0`, bump patch for content edits, minor for new sections/rules, major for incompatible workflow changes
+- Material updates should be signed with the agent codename in metadata or changelog
+- Tiny typo-only fixes may keep the same version, but should still update `Updated` and `Updated by`
 
 ## Model Strengths Guide
 
@@ -175,7 +185,7 @@ modelmux dispatch --provider dashscope --model kimi-k2.5 --task "find bugs in se
 
 ## Priority Tasks (Current Sprint)
 
-See `shared/task-board.md` for the full list. High-impact areas:
+See Linear (https://linear.app/lingshu-dev) for the full list — `shared/task-board.md` is the offline mirror. High-impact areas:
 
 1. **Test coverage** — Push from 84% toward 90%+ (server.py 76%, cli.py 76%)
 2. **VS Code extension** — MCP client + Dashboard WebView (P1, unassigned)
@@ -196,6 +206,6 @@ checks the task-board. As long as Reef's session is alive, PR review is automati
 
 - Do NOT modify `CLAUDE.md` — that's Claude Code's private config
 - Do NOT push to `main` directly — always use PR workflow via task-board
-- Do NOT start work without checking task-board first
+- Do NOT start work without checking Linear first (or task-board.md if offline)
 - Do NOT create AGENTS.md in subdirectories — one root file is enough
 - Do NOT store secrets, API keys, or credentials in any file

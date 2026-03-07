@@ -46,6 +46,7 @@ def _broadcast_ns(**overrides):
         "timeout": 300,
         "workdir": ".",
         "task": ["test"],
+        "compare": False,
     }
     defaults.update(overrides)
     for k, v in defaults.items():
@@ -332,6 +333,63 @@ def test_dispatch_no_failover_by_default(capsys):
     result = json.loads(captured.out)
     assert result["status"] == "error"
     assert "failover_from" not in result
+
+
+def test_broadcast_compare(capsys):
+    """broadcast --compare should add comparison analysis."""
+    from modelmux.cli import _cmd_broadcast
+
+    ns = _broadcast_ns(task=["compare test"], compare=True)
+    codex_result = AdapterResult(
+        run_id="c1",
+        provider="codex",
+        status="success",
+        output="The code looks good and well structured",
+        duration_seconds=5.0,
+    )
+    gemini_result = AdapterResult(
+        run_id="g1",
+        provider="gemini",
+        status="success",
+        output="The code is well structured and readable",
+        duration_seconds=3.0,
+    )
+    mock_codex = _make_adapter(available=True, result=codex_result)
+    mock_gemini = _make_adapter(available=True, result=gemini_result)
+
+    with patch(
+        "modelmux.adapters.get_all_adapters",
+        return_value={"codex": mock_codex, "gemini": mock_gemini},
+    ):
+        _cmd_broadcast(ns)
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "comparison" in data
+    assert data["comparison"]["comparable"] is True
+    assert "agreement_score" in data["comparison"]
+    assert "speed_ranking" in data["comparison"]
+
+
+def test_broadcast_no_compare_by_default(capsys):
+    """broadcast without --compare should not include comparison."""
+    from modelmux.cli import _cmd_broadcast
+
+    ns = _broadcast_ns(task=["no compare"])
+    result = AdapterResult(
+        run_id="c1", provider="codex", status="success", output="ok"
+    )
+    mock_adapter = _make_adapter(available=True, result=result)
+
+    with patch(
+        "modelmux.adapters.get_all_adapters",
+        return_value={"codex": mock_adapter},
+    ):
+        _cmd_broadcast(ns)
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "comparison" not in data
 
 
 def test_broadcast_all_fail_exits_1(capsys):

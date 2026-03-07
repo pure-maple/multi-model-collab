@@ -562,6 +562,7 @@ def _cmd_broadcast(args: argparse.Namespace) -> None:
     sandbox = getattr(args, "sandbox", "read-only")
     timeout = getattr(args, "timeout", 300)
     workdir = getattr(args, "workdir", ".")
+    do_compare = getattr(args, "compare", False)
 
     all_adapters, available = _get_available_adapters()
 
@@ -622,11 +623,14 @@ def _cmd_broadcast(args: argparse.Namespace) -> None:
     except Exception:
         pass
 
-    output = json.dumps(
-        {"results": results, "providers": targets},
-        ensure_ascii=False,
-        indent=2,
-    )
+    broadcast_data: dict = {"results": results, "providers": targets}
+
+    if do_compare:
+        from modelmux.compare import compare_results
+
+        broadcast_data["comparison"] = compare_results(results)
+
+    output = json.dumps(broadcast_data, ensure_ascii=False, indent=2)
     print(output)
 
     # Exit 1 if all failed
@@ -856,6 +860,11 @@ def main() -> None:
         "-w",
         default=".",
         help="Working directory (default: current dir)",
+    )
+    bcast_p.add_argument(
+        "--compare",
+        action="store_true",
+        help="Add structured comparison analysis (similarity, speed ranking)",
     )
     bcast_p.add_argument(
         "task",

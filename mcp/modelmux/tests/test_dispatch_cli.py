@@ -28,6 +28,7 @@ def _dispatch_ns(**overrides):
         "workdir": ".",
         "task": ["test"],
         "max_retries": 1,
+        "failover": False,
     }
     defaults.update(overrides)
     for k, v in defaults.items():
@@ -277,6 +278,60 @@ def test_broadcast_specific_providers(capsys):
     data = json.loads(captured.out)
     assert data["providers"] == ["codex"]
     assert len(data["results"]) == 1
+
+
+def test_dispatch_failover_success(capsys):
+    """dispatch --failover should try another provider on error."""
+    from modelmux.cli import _cmd_dispatch
+
+    ns = _dispatch_ns(task=["fail then recover"], failover=True)
+    err_result = AdapterResult(
+        run_id="r5", provider="codex", status="error", error="crashed"
+    )
+    ok_result = AdapterResult(
+        run_id="r6", provider="gemini", status="success", output="recovered"
+    )
+    mock_codex = _make_adapter(available=True, result=err_result)
+    mock_gemini = _make_adapter(available=True, result=ok_result)
+
+    with patch(
+        "modelmux.adapters.get_all_adapters",
+        return_value={"codex": mock_codex, "gemini": mock_gemini},
+    ):
+        _cmd_dispatch(ns)
+
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["status"] == "success"
+    assert result["provider"] == "gemini"
+    assert result["failover_from"] == "codex"
+
+
+def test_dispatch_no_failover_by_default(capsys):
+    """dispatch without --failover should not try other providers."""
+    from modelmux.cli import _cmd_dispatch
+
+    ns = _dispatch_ns(task=["fail"])
+    err_result = AdapterResult(
+        run_id="r7", provider="codex", status="error", error="crashed"
+    )
+    mock_codex = _make_adapter(available=True, result=err_result)
+    mock_gemini = _make_adapter(available=True)
+
+    with (
+        patch(
+            "modelmux.adapters.get_all_adapters",
+            return_value={"codex": mock_codex, "gemini": mock_gemini},
+        ),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        _cmd_dispatch(ns)
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["status"] == "error"
+    assert "failover_from" not in result
 
 
 def test_broadcast_all_fail_exits_1(capsys):

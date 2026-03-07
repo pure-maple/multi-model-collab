@@ -28,6 +28,7 @@ class TestDashboardIndex:
         assert "/api/history" in resp.text
         assert "/api/providers" in resp.text
         assert "/api/feedback" in resp.text
+        assert "/api/events" in resp.text
 
 
 class TestApiStatus:
@@ -370,6 +371,48 @@ class TestApiFeedback:
         assert len(data["recent"]) == 20
 
 
+class TestCollectDashboardData:
+    """Test the _collect_dashboard_data helper used by SSE."""
+
+    def test_collect_returns_all_sections(self):
+        from modelmux.dashboard import _collect_dashboard_data
+
+        with (
+            patch("modelmux.status.list_active", return_value=[]),
+            patch("modelmux.history.get_history_stats", return_value={"total": 0}),
+            patch("modelmux.history.read_history", return_value=[]),
+        ):
+            data = _collect_dashboard_data()
+        assert "active" in data
+        assert "stats" in data
+        assert "history" in data
+
+    def test_collect_includes_active_dispatches(self):
+        from modelmux.dashboard import _collect_dashboard_data
+        from modelmux.status import DispatchStatus
+
+        mock_dispatch = DispatchStatus(
+            run_id="sse-1",
+            provider="codex",
+            task_summary="sse test",
+            status="running",
+            started_at=1000.0,
+        )
+        with (
+            patch("modelmux.status.list_active", return_value=[mock_dispatch]),
+            patch("modelmux.history.get_history_stats", return_value={"total": 5}),
+            patch(
+                "modelmux.history.read_history",
+                return_value=[{"ts": 1, "provider": "codex", "status": "success"}],
+            ),
+        ):
+            data = _collect_dashboard_data()
+        assert len(data["active"]) == 1
+        assert data["active"][0]["run_id"] == "sse-1"
+        assert data["stats"]["total"] == 5
+        assert len(data["history"]) == 1
+
+
 class TestCreateApp:
     def test_app_has_all_routes(self):
         app = create_app()
@@ -383,3 +426,4 @@ class TestCreateApp:
         assert "/api/feedback" in paths
         assert "/api/trends" in paths
         assert "/api/collaborations" in paths
+        assert "/api/events" in paths

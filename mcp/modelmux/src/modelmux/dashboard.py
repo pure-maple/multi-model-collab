@@ -14,12 +14,14 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import shutil
 from dataclasses import asdict
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 
@@ -206,6 +208,48 @@ async def api_costs(request: Request) -> JSONResponse:
     stats = get_history_stats(hours=hours, include_costs=True)
     costs = stats.get("costs", {})
     return JSONResponse({"costs": costs, "pricing": PRICING})
+
+
+def _collect_dashboard_data() -> dict:
+    """Gather all dashboard data in one call (for SSE push)."""
+    from modelmux.history import HistoryQuery, get_history_stats, read_history
+    from modelmux.status import list_active
+
+    active = list_active()
+    stats = get_history_stats(hours=0, include_costs=True)
+    entries = read_history(HistoryQuery(limit=15))
+
+    return {
+        "active": [asdict(s) for s in active],
+        "stats": stats,
+        "history": entries,
+    }
+
+
+async def api_events(request: Request) -> StreamingResponse:
+    """GET /api/events — SSE stream pushing dashboard updates every 2s."""
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                data = _collect_dashboard_data()
+                payload = json.dumps(data, ensure_ascii=False, default=str)
+                yield f"data: {payload}\n\n"
+                await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def index(request: Request) -> HTMLResponse:
@@ -466,8 +510,76 @@ async function refreshCollabs() {
 async function refresh() {
   await Promise.all([refreshActive(), refreshProviders(), refreshStats(), refreshCosts(), refreshFeedback(), refreshHistory(), refreshTrends(), refreshCollabs()]);
 }
+
+// SSE real-time updates with polling fallback
+let sseConnected = false;
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => {
+    sseConnected = true;
+    $('refresh-info').textContent = 'live (SSE)';
+  };
+  es.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      // Update active dispatches from SSE data
+      if (d.active !== undefined) {
+        const count = d.active.length;
+        if (count === 0) { $('active').innerHTML = '<p style="color:var(--text-dim)">No active dispatches</p>'; }
+        else {
+          const now = Date.now()/1000;
+          let h = '<table><tr><th>Provider</th><th>Elapsed</th><th>Task</th></tr>';
+          d.active.forEach(s => {
+            h += `<tr><td>${esc(s.provider)}</td><td>${(now - s.started_at).toFixed(1)}s</td><td>${esc((s.task_summary||'').slice(0,60))}</td></tr>`;
+          });
+          h += '</table>';
+          $('active').innerHTML = h;
+        }
+      }
+      // Update stats
+      if (d.stats && d.stats.total) {
+        let h = `<div class="stat"><span class="stat-label">Total dispatches</span><span class="stat-value">${d.stats.total}</span></div>`;
+        for (const [prov, ps] of Object.entries(d.stats.by_provider || {})) {
+          h += `<div class="stat"><span class="stat-label">${esc(prov)}</span><span>${ps.calls} calls, ${ps.success_rate}% ok, avg ${ps.avg_duration}s</span></div>`;
+        }
+        $('stats').innerHTML = h;
+      }
+      // Update history
+      if (d.history && d.history.length) {
+        let h = '<table><tr><th>Time</th><th>Provider</th><th>Status</th><th>Duration</th><th>Task</th></tr>';
+        d.history.forEach(e => {
+          const t = e.ts ? new Date(e.ts*1000).toLocaleTimeString() : '?';
+          const icon = e.status === 'success' ? '&#x2713;' : '&#x2717;';
+          const cls = e.status === 'success' ? 'color:var(--green)' : 'color:var(--red)';
+          h += `<tr><td>${t}</td><td>${esc(e.provider||'?')}</td><td style="${cls}">${icon}</td><td>${(e.duration_seconds||0).toFixed(1)}s</td><td>${esc((e.task||'').slice(0,60))}</td></tr>`;
+        });
+        h += '</table>';
+        $('history').innerHTML = h;
+      }
+    } catch {}
+    // Refresh less-frequent panels at lower rate via SSE counter
+    if (!window._sseCount) window._sseCount = 0;
+    window._sseCount++;
+    if (window._sseCount % 5 === 0) {
+      refreshProviders(); refreshCosts(); refreshFeedback(); refreshTrends(); refreshCollabs();
+    }
+  };
+  es.onerror = () => {
+    sseConnected = false;
+    es.close();
+    $('refresh-info').textContent = 'auto-refresh: 5s (polling)';
+    // Fall back to polling
+    setInterval(refresh, 5000);
+  };
+}
+
+// Initial full load, then try SSE
 refresh();
-setInterval(refresh, 5000);
+if (typeof EventSource !== 'undefined') {
+  connectSSE();
+} else {
+  setInterval(refresh, 5000);
+}
 </script>
 </body>
 </html>
@@ -487,6 +599,7 @@ def create_app() -> Starlette:
             Route("/api/feedback", api_feedback),
             Route("/api/trends", api_trends),
             Route("/api/collaborations", api_collaborations),
+            Route("/api/events", api_events),
         ],
     )
 

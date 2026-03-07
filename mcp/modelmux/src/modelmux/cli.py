@@ -453,6 +453,7 @@ def _cmd_dispatch(args: argparse.Namespace) -> None:
     timeout = getattr(args, "timeout", 300)
     workdir = getattr(args, "workdir", ".")
     max_retries = max(1, min(getattr(args, "max_retries", 1), 5))
+    failover = getattr(args, "failover", False)
 
     all_adapters, available = _get_available_adapters()
 
@@ -505,7 +506,35 @@ def _cmd_dispatch(args: argparse.Namespace) -> None:
             if result.status not in ("error", "timeout"):
                 break
 
+    # Failover to other providers
+    failover_from = ""
+    if failover and result.status in ("error", "timeout"):
+        for fb_name in available:
+            if fb_name == provider:
+                continue
+            fb_adapter = _resolve_adapter(all_adapters, fb_name)
+            if not fb_adapter.check_available():
+                continue
+            print(
+                f"Failover: {provider} failed, trying {fb_name}...",
+                file=sys.stderr,
+            )
+            failover_from = provider
+            result = asyncio.run(
+                fb_adapter.run(
+                    prompt=task,
+                    workdir=workdir,
+                    sandbox=sandbox,
+                    timeout=timeout,
+                    extra_args=extra if extra else None,
+                )
+            )
+            if result.status not in ("error", "timeout"):
+                break
+
     result_dict = result.to_dict()
+    if failover_from:
+        result_dict["failover_from"] = failover_from
 
     # Log to history (same as MCP tool dispatch)
     try:
@@ -786,6 +815,11 @@ def main() -> None:
         default=1,
         dest="max_retries",
         help="Max attempts for same provider (default: 1, max: 5)",
+    )
+    disp_p.add_argument(
+        "--failover",
+        action="store_true",
+        help="Try other providers if the primary one fails",
     )
     disp_p.add_argument(
         "task",

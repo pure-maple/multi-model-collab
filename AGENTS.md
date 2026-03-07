@@ -92,7 +92,7 @@ main (protected — only Reef merges)
 - Each agent works in its own worktree on its own branch
 - Branch naming: `<agent-name>/<issue-description>` (e.g., `bolt/vscode-extension`)
 - NEVER push directly to `main`
-- When done, push your branch and notify Reef via `shared/task-board.md`
+- When done, push your branch and update Linear status to `In Review`
 
 ### 2. Task Lifecycle
 
@@ -100,7 +100,7 @@ main (protected — only Reef merges)
 AVAILABLE → CLAIMED → IN_PROGRESS → PR_READY → MERGED → DONE
 ```
 
-1. **Find a task**: Check Linear (https://linear.app/lingshu-dev, issues MER-xxx) for AVAILABLE tasks; `shared/task-board.md` is the offline mirror
+1. **Find a task**: Check Linear (https://linear.app/lingshu-dev, issues MER-xxx) for AVAILABLE tasks
 2. **Claim it**: Set Linear status to CLAIMED, note your name; include MER-xxx in branch name and commits
 3. **Work**: Create worktree + branch, implement, test, commit
 4. **PR Ready**: Push branch, set Linear status to `PR_READY` — Reef auto-detects and reviews
@@ -113,7 +113,7 @@ AVAILABLE → CLAIMED → IN_PROGRESS → PR_READY → MERGED → DONE
 **Before starting any task**:
 1. Check Linear (https://linear.app/lingshu-dev) — verify no one else claimed it
 2. Read `shared/active-locks.md` — check no file-level locks
-3. If two agents need the same file, coordinate via task-board comments
+3. If two agents need the same file, coordinate via Linear comments
 
 **File locking** (advisory):
 ```markdown
@@ -129,7 +129,7 @@ Release locks when your PR is submitted. Locks expire after 24h automatically.
 
 All communication happens through `shared/` directory files:
 - Linear https://linear.app/lingshu-dev — Primary task management (MER-xxx issues)
-- `shared/task-board.md` — Read-only offline mirror of Linear
+- `shared/task-board.md` — Deprecated (已迁移至 Linear)
 - `shared/active-locks.md` — Advisory file locks
 - `shared/agent-cards/` — Agent identity and capability cards
 - `shared/pr-requests/` — PR descriptions for Reef to review
@@ -185,7 +185,7 @@ modelmux dispatch --provider dashscope --model kimi-k2.5 --task "find bugs in se
 
 ## Priority Tasks (Current Sprint)
 
-See Linear (https://linear.app/lingshu-dev) for the full list — `shared/task-board.md` is the offline mirror. High-impact areas:
+See Linear (https://linear.app/lingshu-dev) for the full list. High-impact areas:
 
 1. **Test coverage** — Push from 84% toward 90%+ (server.py 76%, cli.py 76%)
 2. **VS Code extension** — MCP client + Dashboard WebView (P1, unassigned)
@@ -194,18 +194,14 @@ See Linear (https://linear.app/lingshu-dev) for the full list — `shared/task-b
 
 ## Automatic PR Review (How Reef Wakes Up)
 
-When you mark a task as `PR_READY` in task-board.md, Reef's Stop hook detects it
-and automatically wakes Reef to review your PR. You don't need to notify anyone.
+When you update Linear status to `In Review`, Reef will review your PR.
 
-**Flow**: You push branch + mark PR_READY → Reef auto-detects → reviews → merges or requests changes
-
-This works because Reef runs as a Claude Code session with a Stop hook that periodically
-checks the task-board. As long as Reef's session is alive, PR review is automatic.
+**Flow**: You push branch + update Linear → Reef reviews → merges or requests changes
 
 ## What NOT To Do
 
 - Do NOT modify `CLAUDE.md` — that's Claude Code's private config
-- Do NOT push to `main` directly — always use PR workflow via task-board
-- Do NOT start work without checking Linear first (or task-board.md if offline)
+- Do NOT push to `main` directly — always use PR workflow
+- Do NOT start work without checking Linear first
 - Do NOT create AGENTS.md in subdirectories — one root file is enough
 - Do NOT store secrets, API keys, or credentials in any file

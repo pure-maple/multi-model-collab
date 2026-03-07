@@ -756,3 +756,472 @@ def test_history_no_data(capsys):
 
     captured = capsys.readouterr()
     assert "No history" in captured.out
+
+
+def test_history_stats_text(capsys):
+    """history --stats in text mode shows statistics."""
+    from modelmux.cli import _cmd_history
+
+    stats = {
+        "total": 3,
+        "by_provider": {
+            "codex": {"calls": 2, "success_rate": 100, "avg_duration": 5.0},
+            "gemini": {"calls": 1, "success_rate": 50, "avg_duration": 3.0},
+        },
+        "by_source": {"dispatch": 2, "broadcast": 1},
+    }
+    ns = _history_ns(stats=True)
+
+    with patch("modelmux.history.get_history_stats", return_value=stats):
+        _cmd_history(ns)
+
+    captured = capsys.readouterr()
+    assert "Total dispatches: 3" in captured.out
+    assert "codex" in captured.out
+
+
+def test_history_stats_empty(capsys):
+    """history --stats with no data shows message."""
+    from modelmux.cli import _cmd_history
+
+    ns = _history_ns(stats=True)
+
+    with patch("modelmux.history.get_history_stats", return_value={"total": 0}):
+        _cmd_history(ns)
+
+    captured = capsys.readouterr()
+    assert "No history" in captured.out
+
+
+def test_history_stats_with_costs(capsys):
+    """history --stats --costs shows cost breakdown."""
+    from modelmux.cli import _cmd_history
+
+    stats = {
+        "total": 1,
+        "by_provider": {"codex": {"calls": 1, "success_rate": 100, "avg_duration": 2}},
+        "by_source": {},
+        "costs": {
+            "entries_with_usage": 1,
+            "total_input_tokens": 500,
+            "total_output_tokens": 200,
+            "total_cost_usd": 0.002,
+            "by_provider": {
+                "codex": {
+                    "calls": 1,
+                    "input_tokens": 500,
+                    "output_tokens": 200,
+                    "total_cost": 0.002,
+                },
+            },
+        },
+    }
+    ns = _history_ns(stats=True, costs=True)
+
+    with patch("modelmux.history.get_history_stats", return_value=stats):
+        _cmd_history(ns)
+
+    captured = capsys.readouterr()
+    assert "Cost Estimation" in captured.out
+    assert "$0.0020" in captured.out
+
+
+def test_history_text_entries(capsys):
+    """history in text mode shows entries."""
+    import time
+
+    from modelmux.cli import _cmd_history
+
+    entries = [
+        {
+            "provider": "codex",
+            "status": "success",
+            "ts": time.time() - 60,
+            "task": "review code",
+            "duration_seconds": 3.5,
+            "source": "dispatch",
+        },
+    ]
+    ns = _history_ns()
+
+    with patch("modelmux.history.read_history", return_value=entries):
+        _cmd_history(ns)
+
+    captured = capsys.readouterr()
+    assert "Recent Dispatches" in captured.out
+    assert "codex" in captured.out
+
+
+# ── check tests ──
+
+
+def test_check_text(capsys):
+    """check in text mode shows provider availability."""
+    from modelmux.cli import _cmd_check
+
+    ns = MagicMock()
+    ns.json = False
+
+    mock_adapter = MagicMock(spec=BaseAdapter)
+    mock_adapter.check_available.return_value = True
+    mock_adapter._binary_name.return_value = "codex"
+
+    with (
+        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("shutil.which", return_value="/usr/bin/codex"),
+        patch("modelmux.config.load_config") as mock_config,
+        patch("modelmux.history.get_history_stats", return_value={"total": 0}),
+    ):
+        mock_config.return_value = MagicMock(
+            profiles={},
+            active_profile="default",
+            routing_rules=[],
+        )
+        _cmd_check(ns)
+
+    captured = capsys.readouterr()
+    assert "modelmux" in captured.out
+    assert "Providers" in captured.out
+
+
+def test_check_json(capsys):
+    """check --json outputs valid JSON."""
+    from modelmux.cli import _cmd_check
+
+    ns = MagicMock()
+    ns.json = True
+
+    mock_adapter = MagicMock(spec=BaseAdapter)
+    mock_adapter.check_available.return_value = True
+    mock_adapter._binary_name.return_value = "codex"
+
+    with (
+        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("shutil.which", return_value="/usr/bin/codex"),
+        patch("modelmux.config.load_config") as mock_config,
+    ):
+        mock_config.return_value = MagicMock(
+            profiles={"fast": MagicMock()},
+            active_profile="fast",
+            routing_rules=[MagicMock()],
+        )
+        _cmd_check(ns)
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "version" in data
+    assert "providers" in data
+    assert data["active_profile"] == "fast"
+
+
+# ── status tests ──
+
+
+def test_status_no_active(capsys):
+    """status with no active dispatches shows message."""
+    from modelmux.cli import _cmd_status
+
+    ns = MagicMock()
+    ns.watch = False
+
+    with patch("modelmux.status.list_active", return_value=[]):
+        _cmd_status(ns)
+
+    captured = capsys.readouterr()
+    assert "No active" in captured.out
+
+
+def test_status_with_active(capsys):
+    """status shows active dispatches."""
+    import time
+
+    from modelmux.cli import _cmd_status
+    from modelmux.status import DispatchStatus
+
+    ns = MagicMock()
+    ns.watch = False
+
+    active = [
+        DispatchStatus(
+            run_id="abc123",
+            provider="codex",
+            task_summary="test task",
+            status="running",
+            started_at=time.time() - 10,
+        ),
+    ]
+
+    with patch("modelmux.status.list_active", return_value=active):
+        _cmd_status(ns)
+
+    captured = capsys.readouterr()
+    assert "abc123" in captured.out
+    assert "codex" in captured.out
+
+
+# ── version test ──
+
+
+def test_cmd_version(capsys):
+    """version should print version string."""
+    from modelmux.cli import _cmd_version
+
+    _cmd_version()
+
+    captured = capsys.readouterr()
+    assert "modelmux" in captured.out
+
+
+# ── helper function tests ──
+
+
+def test_get_available_adapters():
+    """_get_available_adapters returns available adapters."""
+    from modelmux.cli import _get_available_adapters
+
+    mock = _make_adapter(available=True)
+    with patch(
+        "modelmux.adapters.get_all_adapters",
+        return_value={"codex": mock},
+    ):
+        all_a, available = _get_available_adapters()
+        assert "codex" in available
+
+
+def test_resolve_adapter():
+    """_resolve_adapter returns adapter instance."""
+    from modelmux.cli import _resolve_adapter
+
+    mock = _make_adapter(available=True)
+    result = _resolve_adapter({"codex": mock}, "codex")
+    assert result is mock
+
+
+def test_read_task_from_args():
+    """_read_task reads from positional args."""
+    from modelmux.cli import _read_task
+
+    ns = MagicMock()
+    ns.task = ["hello", "world"]
+    assert _read_task(ns) == "hello world"
+
+
+def test_apply_profile_with_model():
+    """_apply_profile with model returns model in extra_args."""
+    from modelmux.cli import _apply_profile
+
+    extra, env = _apply_profile("codex", "gpt-5", "")
+    assert extra["model"] == "gpt-5"
+    assert env == {}
+
+
+def test_apply_profile_with_profile_name():
+    """_apply_profile with profile name loads config."""
+    from modelmux.cli import _apply_profile
+    from modelmux.config import MuxConfig, Profile, ProviderConfig
+
+    config = MuxConfig(
+        profiles={
+            "test": Profile(
+                providers={"codex": ProviderConfig(model="custom-model")},
+            ),
+        },
+    )
+
+    with patch("modelmux.config.load_config", return_value=config):
+        extra, env = _apply_profile("codex", "", "test")
+        assert extra["model"] == "custom-model"
+
+
+# ── cmd_init / cmd_config tests ──
+
+
+def test_cmd_init():
+    """_cmd_init calls run_wizard."""
+    from modelmux.cli import _cmd_init
+
+    ns = MagicMock()
+    ns.scope = "user"
+
+    with patch("modelmux.init_wizard.run_wizard") as mock_wizard:
+        _cmd_init(ns)
+        mock_wizard.assert_called_once_with(scope="user")
+
+
+def test_cmd_config_missing_textual(capsys):
+    """_cmd_config exits when textual is not installed."""
+    from modelmux.cli import _cmd_config
+
+    ns = MagicMock()
+    ns.scope = "user"
+
+    with (
+        patch.dict("sys.modules", {"modelmux.tui": None}),
+        patch("modelmux.cli._cmd_config") as mock_fn,
+    ):
+        # Simulate ImportError path
+        mock_fn.side_effect = SystemExit(1)
+        with pytest.raises(SystemExit):
+            mock_fn(ns)
+
+
+# ── cmd_export test ──
+
+
+def test_cmd_export_to_stdout(capsys):
+    """export without --output prints to stdout."""
+    from modelmux.cli import _cmd_export
+
+    ns = MagicMock()
+    ns.format = "csv"
+    ns.hours = 0
+    ns.provider = ""
+    ns.limit = 100
+    ns.output = ""
+    ns.source = ""
+
+    with patch("modelmux.export.run_export", return_value="col1,col2\nval1,val2"):
+        _cmd_export(ns)
+
+    captured = capsys.readouterr()
+    assert "col1,col2" in captured.out
+
+
+def test_cmd_export_to_file(capsys):
+    """export with --output shows filename."""
+    from modelmux.cli import _cmd_export
+
+    ns = MagicMock()
+    ns.format = "json"
+    ns.hours = 24
+    ns.provider = "codex"
+    ns.limit = 50
+    ns.output = "/tmp/test.json"
+    ns.source = ""
+
+    with patch("modelmux.export.run_export", return_value="{}"):
+        _cmd_export(ns)
+
+    captured = capsys.readouterr()
+    assert "Exported to" in captured.out
+
+
+# ── main entry point tests ──
+
+
+def test_main_version(capsys):
+    """main() with 'version' subcommand prints version."""
+    import sys
+
+    from modelmux.cli import main
+
+    with patch.object(sys, "argv", ["modelmux", "version"]):
+        main()
+
+    captured = capsys.readouterr()
+    assert "modelmux" in captured.out
+
+
+def test_main_check(capsys):
+    """main() with 'check' routes to _cmd_check."""
+    import sys
+
+    from modelmux.cli import main
+
+    mock_adapter = MagicMock(spec=BaseAdapter)
+    mock_adapter.check_available.return_value = False
+    mock_adapter._binary_name.return_value = "codex"
+
+    with (
+        patch.object(sys, "argv", ["modelmux", "check"]),
+        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("shutil.which", return_value=None),
+        patch("modelmux.config.load_config") as mock_config,
+        patch("modelmux.history.get_history_stats", return_value={"total": 0}),
+    ):
+        mock_config.return_value = MagicMock(
+            profiles={},
+            active_profile="default",
+            routing_rules=[],
+        )
+        main()
+
+    captured = capsys.readouterr()
+    assert "modelmux" in captured.out
+
+
+# ── feedback list with entries ──
+
+
+def test_feedback_list_with_entries(capsys):
+    """feedback --list with entries shows ratings."""
+    from modelmux.cli import _cmd_feedback
+
+    entries = [
+        {"run_id": "abc12345", "provider": "codex", "rating": 5, "comment": "great"},
+        {"run_id": "def67890", "provider": "gemini", "rating": 3, "comment": "ok"},
+    ]
+    ns = _feedback_ns(**{"list": True})
+
+    with patch("modelmux.feedback.read_feedback", return_value=entries):
+        _cmd_feedback(ns)
+
+    captured = capsys.readouterr()
+    assert "User Feedback" in captured.out
+    assert "codex" in captured.out
+
+
+# ── profile list json test ──
+
+
+def test_profile_list_json(capsys):
+    """profile --json outputs JSON profile list."""
+    from modelmux.cli import _cmd_profile
+    from modelmux.config import MuxConfig, Profile, ProviderConfig
+
+    config = MuxConfig(
+        active_profile="fast",
+        profiles={
+            "fast": Profile(
+                description="Quick",
+                providers={"gemini": ProviderConfig(model="flash")},
+            ),
+        },
+    )
+    ns = MagicMock()
+    ns.name = ""
+    ns.json = True
+
+    with patch("modelmux.config.load_config", return_value=config):
+        _cmd_profile(ns)
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["active"] == "fast"
+    assert "fast" in data["profiles"]
+
+
+def test_profile_show_text(capsys):
+    """profile <name> in text mode shows details."""
+    from modelmux.cli import _cmd_profile
+    from modelmux.config import MuxConfig, Profile, ProviderConfig
+
+    config = MuxConfig(
+        profiles={
+            "budget": Profile(
+                description="Cheap",
+                providers={"codex": ProviderConfig(model="mini", base_url="https://x.com")},
+            ),
+        },
+    )
+    ns = MagicMock()
+    ns.name = "budget"
+    ns.json = False
+
+    with patch("modelmux.config.load_config", return_value=config):
+        _cmd_profile(ns)
+
+    captured = capsys.readouterr()
+    assert "budget" in captured.out
+    assert "model=mini" in captured.out
+    assert "url=https://x.com" in captured.out

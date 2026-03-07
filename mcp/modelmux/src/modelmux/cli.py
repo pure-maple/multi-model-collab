@@ -339,6 +339,7 @@ def _cmd_export(args: argparse.Namespace) -> None:
     provider = getattr(args, "provider", "")
     limit = getattr(args, "limit", 1000)
     output = getattr(args, "output", "")
+    source = getattr(args, "source", "")
 
     content = run_export(
         fmt=fmt,
@@ -346,6 +347,7 @@ def _cmd_export(args: argparse.Namespace) -> None:
         provider=provider,
         limit=limit,
         output=output,
+        source=source,
     )
 
     if output:
@@ -984,6 +986,9 @@ def main() -> None:
     )
     exp_p.add_argument(
         "--output", "-o", default="", help="Write to file instead of stdout"
+    )
+    exp_p.add_argument(
+        "--source", default="", help="Filter by source (dispatch, cli-dispatch, etc.)"
     )
 
     # modelmux dashboard

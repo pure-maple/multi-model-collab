@@ -133,9 +133,10 @@ def run_export(
     limit: int = 1000,
     output: str = "",
     include_stats: bool = True,
+    source: str = "",
 ) -> str:
     """Run export and return the content string (optionally write to file)."""
-    query = HistoryQuery(limit=limit, provider=provider, hours=hours)
+    query = HistoryQuery(limit=limit, provider=provider, hours=hours, source=source)
     entries = read_history(query)
 
     stats = None

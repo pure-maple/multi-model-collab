@@ -159,9 +159,9 @@ mux_orchestrate action=merge branch=codex1/server-tests
 - [ ] Bug 模式提取和积累
 - [ ] 架构决策记录
 
-## 五、与 Nebula 的关系
+## 五、与 Meridian 的关系
 
-mux_orchestrate 是 Nebula 知识资产层的入口：
+mux_orchestrate 是 Meridian 知识资产层的入口：
 - 每次任务执行产生结构化记录
 - 审查结论、bug 模式、架构决策自动沉淀
 - 为后续 RAG/向量索引提供高质量数据源

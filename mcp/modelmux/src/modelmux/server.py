@@ -42,8 +42,8 @@ from modelmux.detect import CallerInfo, detect_caller, get_excluded_providers
 from modelmux.history import HistoryQuery, get_history_stats, log_result, read_history
 from modelmux.log import setup_logging
 from modelmux.orchestrate import (
-    OrchestrateError,
     OrchestratedTask,
+    OrchestrateError,
     apply_action,
     available_roles,
     create_task,

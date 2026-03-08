@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from collections import OrderedDict
 from pathlib import Path
 
 from modelmux.orchestrate import OrchestratedTask
@@ -36,9 +37,10 @@ class OrchestrateStore:
     def upsert(self, task: OrchestratedTask) -> OrchestratedTask:
         """Persist the latest snapshot for a task."""
         self._ensure_loaded()
-        self._tasks[task.task_id] = copy.deepcopy(task)
-        self._append_snapshot(task)
-        return self.get(task.task_id)  # type: ignore[return-value]
+        stored = copy.deepcopy(task)
+        self._append_snapshot(stored)
+        self._tasks[stored.task_id] = stored
+        return copy.deepcopy(stored)
 
     def get(self, task_id: str) -> OrchestratedTask | None:
         """Fetch a single task by id."""
@@ -83,38 +85,60 @@ class OrchestrateStore:
             try:
                 with open(self._path, encoding="utf-8") as handle:
                     for line in handle:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            record = json.loads(line)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-
-                        task = OrchestratedTask.from_dict(record)
-                        if not task.task_id:
-                            continue
-                        self._tasks[task.task_id] = task
+                        task = self._load_snapshot(line)
+                        if task is not None:
+                            self._tasks[task.task_id] = task
             except OSError:
                 pass
 
         self._loaded = True
 
     def _append_snapshot(self, task: OrchestratedTask) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(task.to_dict(), ensure_ascii=False) + "\n")
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._path, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(task.to_dict(), ensure_ascii=False) + "\n")
+            # Rotation is best-effort after the snapshot has been durably appended.
             self._maybe_rotate()
         except OSError:
             pass
 
     def _maybe_rotate(self) -> None:
+        if self._path.stat().st_size <= self._max_bytes:
+            return
+
+        latest_snapshots: OrderedDict[str, dict[str, object]] = OrderedDict()
+        with open(self._path, encoding="utf-8") as handle:
+            for line in handle:
+                task = self._load_snapshot(line)
+                if task is None:
+                    continue
+                if task.task_id in latest_snapshots:
+                    del latest_snapshots[task.task_id]
+                latest_snapshots[task.task_id] = task.to_dict()
+
+        compacted = "\n".join(
+            json.dumps(record, ensure_ascii=False)
+            for record in latest_snapshots.values()
+        )
+        if compacted:
+            compacted += "\n"
+
+        temp_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
+        temp_path.write_text(compacted, encoding="utf-8")
+        temp_path.replace(self._path)
+
+    def _load_snapshot(self, line: str) -> OrchestratedTask | None:
+        line = line.strip()
+        if not line:
+            return None
+
         try:
-            if self._path.stat().st_size <= self._max_bytes:
-                return
-            lines = self._path.read_text(encoding="utf-8").splitlines()
-            half = len(lines) // 2
-            self._path.write_text("\n".join(lines[half:]) + "\n", encoding="utf-8")
-        except OSError:
-            pass
+            record = json.loads(line)
+            task = OrchestratedTask.from_dict(record)
+        except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+
+        if not task.task_id:
+            return None
+        return task

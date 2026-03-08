@@ -227,6 +227,8 @@ def apply_action(
         return task
 
     if normalized == "review":
+        if task.state.is_terminal():
+            raise OrchestrateError("Integrated tasks cannot be reviewed again")
         if task.state is TaskState.PLANNED:
             raise OrchestrateError("Task must be assigned before review")
         if branch.strip():

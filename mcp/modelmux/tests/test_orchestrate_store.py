@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from modelmux.orchestrate import TaskState, create_task
 from modelmux.orchestrate_store import OrchestrateStore, _store_file
 
@@ -66,12 +68,15 @@ class TestOrchestrateStore:
     def test_state_counts_and_invalid_lines_are_ignored(self, tmp_path):
         path = tmp_path / "orchestrate.jsonl"
         valid = create_task("first task", "T001").to_dict()
+        invalid_semantic = {"task_id": "T002", "title": "bad", "created_at": "oops"}
         path.write_text(
             "\n".join(
                 [
                     "",
                     "not json",
+                    json.dumps(["not", "a", "task"]),
                     json.dumps(valid),
+                    json.dumps(invalid_semantic),
                     json.dumps({"task_id": "", "title": "bad"}),
                 ]
             ),
@@ -81,16 +86,46 @@ class TestOrchestrateStore:
         store = OrchestrateStore(path=path)
         counts = store.state_counts()
         assert counts == {"planned": 1}
+        assert store.get("T001") is not None
+        assert store.get("T002") is None
 
-    def test_rotation_keeps_store_writable(self, tmp_path):
+    def test_rotation_keeps_latest_snapshot_for_each_task(self, tmp_path):
         path = tmp_path / "orchestrate.jsonl"
         store = OrchestrateStore(path=path, max_bytes=1)
         store.upsert(create_task("first task", "T001"))
         store.upsert(create_task("second task", "T002"))
+        updated = create_task("second task updated", "T002")
+        updated.state = TaskState.REVIEWING
+        store.upsert(updated)
 
         reloaded = OrchestrateStore(path=path, max_bytes=1)
         ids = [task.task_id for task in reloaded.list(limit=10)]
+        assert "T001" in ids
         assert "T002" in ids
+        latest = reloaded.get("T002")
+        assert latest is not None
+        assert latest.title == "second task updated"
+        assert latest.state is TaskState.REVIEWING
+
+    def test_upsert_rolls_back_memory_when_persistence_fails(
+        self, tmp_path, monkeypatch
+    ):
+        path = tmp_path / "orchestrate.jsonl"
+        store = OrchestrateStore(path=path)
+        original = store.upsert(create_task("first task", "T001"))
+        replacement = create_task("replacement task", "T001")
+
+        def fail_snapshot(_task):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(store, "_append_snapshot", fail_snapshot)
+
+        with pytest.raises(OSError, match="disk full"):
+            store.upsert(replacement)
+
+        persisted = store.get("T001")
+        assert persisted is not None
+        assert persisted.title == original.title
 
     def test_store_file_uses_config_home(self, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)

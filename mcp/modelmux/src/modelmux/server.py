@@ -43,6 +43,7 @@ from modelmux.history import HistoryQuery, get_history_stats, log_result, read_h
 from modelmux.log import setup_logging
 from modelmux.orchestrate import (
     OrchestrateError,
+    OrchestratedTask,
     apply_action,
     available_roles,
     create_task,
@@ -283,6 +284,41 @@ def _get_orchestrate_store() -> OrchestrateStore:
     if _orchestrate_store is None:
         _orchestrate_store = OrchestrateStore()
     return _orchestrate_store
+
+
+def _resolve_orchestrate_entry(
+    store: OrchestrateStore,
+    *,
+    task_id: str = "",
+    branch: str = "",
+    require_existing_branch: bool = False,
+) -> tuple[OrchestratedTask | None, str, str]:
+    normalized_task_id = task_id.strip()
+    normalized_branch = branch.strip()
+
+    if normalized_task_id:
+        entry = store.get(normalized_task_id)
+        if entry is None:
+            raise OrchestrateError(f"Unknown task_id '{normalized_task_id}'")
+        if normalized_branch:
+            branch_entry = store.find_by_branch(normalized_branch)
+            if branch_entry is None:
+                if require_existing_branch:
+                    raise OrchestrateError(
+                        f"No task found for branch '{normalized_branch}'"
+                    )
+            elif branch_entry.task_id != entry.task_id:
+                raise OrchestrateError("task_id and branch refer to different tasks")
+        return entry, normalized_task_id, normalized_branch
+
+    if normalized_branch:
+        return (
+            store.find_by_branch(normalized_branch),
+            normalized_task_id,
+            normalized_branch,
+        )
+
+    return None, normalized_task_id, normalized_branch
 
 
 async def _auto_decompose_task(
@@ -1021,7 +1057,9 @@ async def mux_orchestrate(
         normalized = normalize_action(action)
 
         if normalized == "plan":
-            candidate_id = task_id or store.next_task_id()
+            candidate_id = task_id.strip() if task_id else store.next_task_id()
+            if not candidate_id:
+                raise OrchestrateError("task_id is required")
             if store.get(candidate_id):
                 raise OrchestrateError(f"task_id '{candidate_id}' already exists")
             entry = create_task(task, task_id=candidate_id)
@@ -1042,19 +1080,25 @@ async def mux_orchestrate(
             )
 
         if normalized == "status":
-            if task_id:
-                entry = store.get(task_id)
+            entry, normalized_task_id, normalized_branch = _resolve_orchestrate_entry(
+                store,
+                task_id=task_id,
+                branch=branch,
+                require_existing_branch=True,
+            )
+            if normalized_task_id:
                 if not entry:
-                    raise OrchestrateError(f"Unknown task_id '{task_id}'")
+                    raise OrchestrateError(f"Unknown task_id '{normalized_task_id}'")
                 payload: dict = {
                     "status": "success",
                     "action": normalized,
                     "task": entry.to_dict(),
                 }
-            elif branch:
-                entry = store.find_by_branch(branch)
+            elif normalized_branch:
                 if not entry:
-                    raise OrchestrateError(f"No task found for branch '{branch}'")
+                    raise OrchestrateError(
+                        f"No task found for branch '{normalized_branch}'"
+                    )
                 payload = {
                     "status": "success",
                     "action": normalized,
@@ -1075,9 +1119,11 @@ async def mux_orchestrate(
                 }
             return json.dumps(payload, indent=2, ensure_ascii=False)
 
-        entry = store.get(task_id) if task_id else None
-        if entry is None and branch:
-            entry = store.find_by_branch(branch)
+        entry, _, normalized_branch = _resolve_orchestrate_entry(
+            store,
+            task_id=task_id,
+            branch=branch,
+        )
         if entry is None:
             raise OrchestrateError("task_id or an existing branch is required")
 
@@ -1086,7 +1132,7 @@ async def mux_orchestrate(
             normalized,
             role=role,
             agent=agent,
-            branch=branch,
+            branch=normalized_branch,
         )
         saved = store.upsert(updated)
         await ctx.info(f"{saved.task_id}: {normalized} -> {saved.state.value}")

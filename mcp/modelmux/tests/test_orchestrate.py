@@ -114,6 +114,16 @@ class TestStateTransitions:
         with pytest.raises(OrchestrateError):
             apply_action(task, "assign", role="implementer", agent="codex")
 
+    def test_integrated_task_cannot_be_reviewed_again(self):
+        task = create_task("implement feature", "T001")
+        apply_action(task, "assign", role="implementer", agent="codex", branch="feat/x")
+        apply_action(task, "review")
+        apply_action(task, "merge")
+
+        with pytest.raises(OrchestrateError):
+            apply_action(task, "review")
+        assert task.state is TaskState.INTEGRATED
+
     def test_merge_requires_branch_when_task_branch_is_cleared(self):
         task = create_task("implement feature", "T001")
         apply_action(task, "assign", role="implementer", agent="codex", branch="feat/x")

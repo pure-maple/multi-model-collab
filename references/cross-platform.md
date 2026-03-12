@@ -9,7 +9,7 @@ claude mcp add modelmux -s user --transport stdio -- \
   uvx --from /path/to/mcp/modelmux modelmux
 ```
 
-### Auto-Approve Tool Calls (optional)
+### Auto-Approve Tool Calls (optional, common subset)
 
 Add to `~/.claude/settings.json`:
 
@@ -18,11 +18,15 @@ Add to `~/.claude/settings.json`:
   "permissions": {
     "allow": [
       "mcp__modelmux__mux_dispatch",
+      "mcp__modelmux__mux_broadcast",
       "mcp__modelmux__mux_check"
     ]
   }
 }
 ```
+
+If you use review/consensus flows regularly, append the other tool names you want
+to auto-approve. Otherwise, leave them out and let Claude confirm them case by case.
 
 ### Skill Installation
 
@@ -44,10 +48,12 @@ Add to `~/.codex/config.toml`:
 command = "uvx"
 args = ["--from", "/path/to/mcp/modelmux", "modelmux"]
 required = false
-enabled_tools = ["mux_dispatch", "mux_check"]
 tool_timeout_sec = 600
 startup_timeout_sec = 30
 ```
+
+Leave `enabled_tools` unset if you want Codex CLI to see the full modelmux tool
+surface. Add it only when you intentionally want to restrict the available tools.
 
 ### Skill Installation
 

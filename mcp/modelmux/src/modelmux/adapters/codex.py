@@ -52,7 +52,10 @@ def _find_git_dir(workdir: str) -> str | None:
                 with open(git_path) as f:
                     content = f.read().strip()
                 if content.startswith("gitdir:"):
-                    return content[len("gitdir:") :].strip()
+                    gitdir = content[len("gitdir:") :].strip()
+                    if not os.path.isabs(gitdir):
+                        gitdir = os.path.join(current, gitdir)
+                    return os.path.realpath(gitdir)
             except OSError:
                 pass
             return None

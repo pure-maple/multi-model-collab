@@ -98,7 +98,23 @@ def test_find_git_dir_with_git_file():
         with open(git_file, "w") as f:
             f.write(f"gitdir: {real_git}\n")
         result = _find_git_dir(sub)
-        assert result == real_git
+        assert result == os.path.realpath(real_git)
+
+
+def test_find_git_dir_with_relative_git_file():
+    """Relative gitdir pointers should be resolved from the .git file location."""
+    with tempfile.TemporaryDirectory() as d:
+        real_git = os.path.join(d, "real-git-dir")
+        os.mkdir(real_git)
+        nested = os.path.join(d, "nested")
+        os.mkdir(nested)
+        sub = os.path.join(nested, "sub")
+        os.mkdir(sub)
+        git_file = os.path.join(sub, ".git")
+        with open(git_file, "w") as f:
+            f.write("gitdir: ../../real-git-dir\n")
+        result = _find_git_dir(sub)
+        assert result == os.path.realpath(real_git)
 
 
 # --- CodexAdapter.build_command uses workdir as-is ---

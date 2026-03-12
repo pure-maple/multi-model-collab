@@ -1,14 +1,17 @@
-"""Tests for server.py MCP tool functions (dispatch, broadcast, history, feedback, check, workflow, collaborate)."""
+"""Tests for server.py MCP tool functions.
 
+Covers dispatch, broadcast, history, feedback, check, workflow, and collaborate.
+"""
+
+import asyncio
 import json
-import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from modelmux.adapters.base import AdapterResult, BaseAdapter
-
 
 # --- Fake Context for testing MCP tools ---
 
@@ -73,6 +76,28 @@ class UnavailableAdapter(FakeAdapter):
         return False
 
 
+@dataclass
+class FakeDecomposeSubtask:
+    name: str
+    task: str
+    provider: str = "auto"
+    depends_on: list[str] | None = None
+
+    def __post_init__(self):
+        if self.depends_on is None:
+            self.depends_on = []
+
+
+class FakeDecomposePlan:
+    def __init__(self, subtasks, waves, should_decompose=True):
+        self.subtasks = subtasks
+        self._waves = waves
+        self.should_decompose = should_decompose
+
+    def execution_order(self):
+        return [[self.subtasks[idx] for idx in wave] for wave in self._waves]
+
+
 # --- mux_dispatch tests ---
 
 
@@ -97,7 +122,7 @@ class TestMuxDispatch:
             patch("modelmux.server.load_config") as mock_config,
             patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
             patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.load_policy") as mock_policy,
+            patch("modelmux.server.load_policy"),
             patch("modelmux.server.check_policy") as mock_check,
             patch("modelmux.server.count_recent", return_value=0),
             patch("modelmux.server.write_status"),
@@ -178,7 +203,6 @@ class TestMuxDispatch:
         unavail = UnavailableAdapter()
         fallback = FakeAdapter(output="fallback result")
 
-        call_count = [0]
         def mock_get_adapter(name):
             if name == "codex":
                 return unavail
@@ -408,6 +432,458 @@ class TestMuxDispatch:
             data = json.loads(result)
             assert data["status"] == "success"
             assert data["failover_from"] == "codex"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_returns_auto_decompose_result(self):
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        adapter = MagicMock()
+        adapter.check_available.return_value = True
+        adapter.run = AsyncMock()
+        decompose_result = json.dumps(
+            {
+                "status": "success",
+                "provider": "codex",
+                "decomposed": True,
+                "output": "merged plan",
+            }
+        )
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_config") as mock_config,
+            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
+            patch("modelmux.server._get_adapter", return_value=adapter),
+            patch("modelmux.server.load_policy"),
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch(
+                "modelmux.server._auto_decompose_task",
+                return_value=decompose_result,
+            ),
+        ):
+            mock_config.return_value = MagicMock(
+                active_profile="default",
+                profiles={},
+                disabled_providers=[],
+                routing_rules=[],
+                default_provider="codex",
+                auto_exclude_caller=True,
+                caller_override="",
+            )
+            from modelmux.detect import CallerInfo
+
+            mock_detect.return_value = (
+                CallerInfo(client_name="test", provider="", platform=""),
+                [],
+            )
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_dispatch(
+                provider="codex",
+                task="complex task",
+                ctx=ctx,
+                auto_decompose=True,
+            )
+
+        data = json.loads(result)
+        assert data["decomposed"] is True
+        adapter.run.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_retries_same_provider_and_reports_progress(self):
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        adapter = MagicMock()
+        adapter.check_available.return_value = True
+
+        results = [
+            AdapterResult(
+                provider="codex",
+                status="error",
+                output="",
+                summary="failed",
+                duration_seconds=0.2,
+                error="boom",
+            ),
+            AdapterResult(
+                provider="codex",
+                status="success",
+                output="recovered",
+                summary="recovered",
+                duration_seconds=0.3,
+            ),
+        ]
+
+        async def run_with_progress(**kwargs):
+            kwargs["on_progress"]("streaming output")
+            return results.pop(0)
+
+        adapter.run = AsyncMock(side_effect=run_with_progress)
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_config") as mock_config,
+            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
+            patch("modelmux.server._get_adapter", return_value=adapter),
+            patch("modelmux.server.load_policy"),
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.write_status") as mock_write_status,
+            patch("modelmux.server.remove_status"),
+            patch("modelmux.server.log_dispatch"),
+            patch("modelmux.server.log_result"),
+            patch(
+                "modelmux.server.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
+            mock_config.return_value = MagicMock(
+                active_profile="default",
+                profiles={},
+                disabled_providers=[],
+                routing_rules=[],
+                default_provider="codex",
+                auto_exclude_caller=True,
+                caller_override="",
+            )
+            from modelmux.detect import CallerInfo
+
+            mock_detect.return_value = (
+                CallerInfo(client_name="test", provider="", platform=""),
+                [],
+            )
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_dispatch(
+                provider="codex",
+                task="retry task",
+                ctx=ctx,
+                max_retries=3,
+                failover=False,
+            )
+
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["output"] == "recovered"
+        assert adapter.run.await_count == 2
+        mock_sleep.assert_awaited_once_with(2)
+        assert mock_write_status.call_count >= 3
+        assert (
+            "info",
+            "Attempt 2/3: retrying codex in 2s...",
+        ) in ctx._messages
+
+
+class TestAutoDecomposeTask:
+    @pytest.mark.asyncio
+    async def test_auto_decompose_task_returns_none_when_planner_fails(self):
+        from modelmux.detect import CallerInfo
+        from modelmux.server import _auto_decompose_task
+
+        ctx = FakeContext()
+        planner = MagicMock()
+        planner.run = AsyncMock(
+            return_value=AdapterResult(
+                provider="planner",
+                status="error",
+                output="",
+                summary="failed",
+                duration_seconds=0.4,
+                error="boom",
+            )
+        )
+
+        with (
+            patch("modelmux.server._get_adapter", return_value=planner),
+            patch("modelmux.server._build_extra_args", return_value=([], {})),
+        ):
+            result = await _auto_decompose_task(
+                task="investigate failure",
+                planner_provider="planner",
+                ctx=ctx,
+                resolved_workdir="/tmp",
+                sandbox="read-only",
+                timeout=90,
+                model="",
+                profile="",
+                profile_name="default",
+                active_prof=None,
+                caller=CallerInfo(client_name="test", provider="", platform=""),
+                excluded=[],
+            )
+
+        assert result is None
+        assert (
+            "info",
+            "Decomposition planner failed, falling back to direct dispatch",
+        ) in ctx._messages
+
+    @pytest.mark.asyncio
+    async def test_auto_decompose_task_returns_none_when_plan_is_simple(self):
+        from modelmux.detect import CallerInfo
+        from modelmux.server import _auto_decompose_task
+
+        ctx = FakeContext()
+        planner = MagicMock()
+        planner.run = AsyncMock(
+            return_value=AdapterResult(
+                provider="planner",
+                status="success",
+                output="simple",
+                summary="simple",
+                duration_seconds=0.5,
+            )
+        )
+        plan = FakeDecomposePlan(subtasks=[], waves=[], should_decompose=False)
+
+        with (
+            patch("modelmux.server._get_adapter", return_value=planner),
+            patch("modelmux.server._build_extra_args", return_value=([], {})),
+            patch("modelmux.server.parse_decomposition", return_value=plan),
+        ):
+            result = await _auto_decompose_task(
+                task="say hello",
+                planner_provider="planner",
+                ctx=ctx,
+                resolved_workdir="/tmp",
+                sandbox="read-only",
+                timeout=90,
+                model="",
+                profile="",
+                profile_name="default",
+                active_prof=None,
+                caller=CallerInfo(client_name="test", provider="", platform=""),
+                excluded=[],
+            )
+
+        assert result is None
+        assert ("info", "Task is simple enough — dispatching directly") in ctx._messages
+
+    @pytest.mark.asyncio
+    async def test_auto_decompose_task_uses_planner_for_unknown_provider(self):
+        from modelmux.detect import CallerInfo
+        from modelmux.server import _auto_decompose_task
+
+        ctx = FakeContext()
+        planner = MagicMock()
+        planner.run = AsyncMock(
+            side_effect=[
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="plan",
+                    summary="plan",
+                    duration_seconds=0.4,
+                ),
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="unknown provider output",
+                    summary="unknown provider output",
+                    duration_seconds=0.6,
+                ),
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="merged output",
+                    summary="merged output",
+                    duration_seconds=0.5,
+                ),
+            ]
+        )
+        plan = FakeDecomposePlan(
+            subtasks=[
+                FakeDecomposeSubtask(
+                    name="unknown",
+                    task="use fallback provider",
+                    provider="mystery",
+                )
+            ],
+            waves=[[0]],
+        )
+
+        with (
+            patch("modelmux.server._get_adapter", return_value=planner),
+            patch(
+                "modelmux.server.get_all_adapters",
+                return_value={"planner": planner},
+            ),
+            patch("modelmux.server._build_extra_args", return_value=([], {})),
+            patch("modelmux.server.parse_decomposition", return_value=plan),
+            patch("modelmux.server.build_merge_prompt", return_value="merge"),
+            patch("modelmux.server.log_result"),
+        ):
+            result = await _auto_decompose_task(
+                task="fallback test",
+                planner_provider="planner",
+                ctx=ctx,
+                resolved_workdir="/tmp",
+                sandbox="write",
+                timeout=90,
+                model="",
+                profile="",
+                profile_name="default",
+                active_prof=None,
+                caller=CallerInfo(client_name="test", provider="", platform=""),
+                excluded=[],
+            )
+
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["subtasks"][0]["provider"] == "planner"
+
+    @pytest.mark.asyncio
+    async def test_auto_decompose_task_executes_waves_and_merges_results(self):
+        from modelmux.detect import CallerInfo
+        from modelmux.server import _auto_decompose_task
+
+        ctx = FakeContext()
+        planner = MagicMock()
+        planner.run = AsyncMock(
+            side_effect=[
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="plan",
+                    summary="plan",
+                    duration_seconds=0.5,
+                ),
+                AdapterResult(
+                    provider="planner",
+                    status="error",
+                    output="",
+                    summary="blocked",
+                    duration_seconds=0.6,
+                    error="denied",
+                ),
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="summary output",
+                    summary="summary output",
+                    duration_seconds=0.7,
+                ),
+                AdapterResult(
+                    provider="planner",
+                    status="success",
+                    output="merged output",
+                    summary="merged output",
+                    duration_seconds=0.8,
+                ),
+            ]
+        )
+        available = MagicMock()
+        available.check_available.return_value = True
+        available.run = AsyncMock(
+            return_value=AdapterResult(
+                provider="alpha",
+                status="success",
+                output="alpha output",
+                summary="alpha output",
+                duration_seconds=0.4,
+            )
+        )
+        unavailable = UnavailableAdapter()
+        plan = FakeDecomposePlan(
+            subtasks=[
+                FakeDecomposeSubtask(
+                    name="collect",
+                    task="collect evidence",
+                    provider="alpha",
+                ),
+                FakeDecomposeSubtask(
+                    name="blocked",
+                    task="blocked branch",
+                    provider="blocked",
+                ),
+                FakeDecomposeSubtask(
+                    name="summarize",
+                    task="summarize findings",
+                    provider="gemini",
+                    depends_on=["collect"],
+                ),
+            ],
+            waves=[[0, 1], [2]],
+        )
+
+        def get_adapter(name):
+            mapping = {
+                "planner": planner,
+                "alpha": available,
+                "gemini": unavailable,
+                "blocked": MagicMock(),
+            }
+            return mapping[name]
+
+        with (
+            patch("modelmux.server._get_adapter", side_effect=get_adapter),
+            patch(
+                "modelmux.server.get_all_adapters",
+                return_value={
+                    "planner": planner,
+                    "alpha": available,
+                    "blocked": object(),
+                    "gemini": unavailable,
+                },
+            ),
+            patch(
+                "modelmux.server._build_extra_args",
+                return_value=(["--flag"], {"MODEL_PROFILE": "test"}),
+            ),
+            patch("modelmux.server.parse_decomposition", return_value=plan),
+            patch(
+                "modelmux.server.build_merge_prompt",
+                return_value="merge collect + summarize",
+            ) as mock_merge_prompt,
+            patch("modelmux.server.log_result") as mock_log_result,
+        ):
+            result = await _auto_decompose_task(
+                task="investigate regression",
+                planner_provider="planner",
+                ctx=ctx,
+                resolved_workdir="/tmp/workdir",
+                sandbox="write",
+                timeout=180,
+                model="gpt-5.4",
+                profile="default",
+                profile_name="default",
+                active_prof=None,
+                caller=CallerInfo(client_name="test", provider="", platform=""),
+                excluded=["blocked"],
+            )
+
+        data = json.loads(result)
+        assert data["decomposed"] is True
+        assert [item["name"] for item in data["subtasks"]] == [
+            "collect",
+            "blocked",
+            "summarize",
+        ]
+        assert data["subtasks"][1]["status"] == "error"
+        assert data["output"] == "merged output"
+        assert ("info", "Analyzing task for decomposition...") in ctx._messages
+        assert (
+            "info",
+            "Wave 1: running 2 subtasks in parallel",
+        ) in ctx._messages
+        assert ("info", "Wave 2: summarize") in ctx._messages
+        assert ("info", "Merging subtask results...") in ctx._messages
+        assert available.run.await_args.kwargs["prompt"] == "collect evidence"
+        summarize_prompt = planner.run.await_args_list[2].kwargs["prompt"]
+        assert "Context from 'collect'" in summarize_prompt
+        assert "alpha output" in summarize_prompt
+        mock_merge_prompt.assert_called_once_with(
+            "investigate regression",
+            {
+                "collect": "alpha output",
+                "blocked": "",
+                "summarize": "summary output",
+            },
+        )
+        mock_log_result.assert_called_once()
 
 
 # --- mux_broadcast tests ---
@@ -828,7 +1304,10 @@ class TestMuxCheck:
             patch("modelmux.routing._BENCHMARK_FILE") as mock_bf,
             patch("modelmux.feedback._feedback_file") as mock_ff,
             patch("modelmux.server.route_by_rules", return_value=None),
-            patch("modelmux.routing.smart_route", return_value=("fake", {"fake": FakeScore()})),
+            patch(
+                "modelmux.routing.smart_route",
+                return_value=("fake", {"fake": FakeScore()}),
+            ),
             patch("modelmux.routing.classify_task", return_value="analysis"),
         ):
             mock_config.return_value = MagicMock(
@@ -1005,6 +1484,120 @@ class TestMuxCollaborate:
             )
             data = json.loads(result)
             assert data["status"] == "blocked"
+
+    @pytest.mark.asyncio
+    async def test_collaborate_success_uses_pattern_defaults_and_filters_trace(
+        self,
+    ):
+        from modelmux.server import mux_collaborate
+
+        ctx = FakeContext()
+        pattern = SimpleNamespace(
+            roles={
+                "implementer": SimpleNamespace(preferred_provider="codex"),
+                "reviewer": SimpleNamespace(preferred_provider="gemini"),
+            }
+        )
+
+        class FakeEngine:
+            def __init__(self, get_adapter, config):
+                self.get_adapter = get_adapter
+                self.config = config
+
+            async def run(
+                self,
+                task,
+                pattern_name,
+                providers,
+                max_rounds,
+                max_wall_time,
+            ):
+                self.config.on_progress("round 1")
+                await asyncio.sleep(0)
+                return SimpleNamespace(
+                    task_id="task-1",
+                    context_id="ctx-1",
+                    pattern=pattern_name,
+                    state=SimpleNamespace(value="completed"),
+                    round_count=2,
+                    elapsed_seconds=4.2,
+                    providers=["codex", "gemini"],
+                    turns=[
+                        SimpleNamespace(
+                            turn_id="t1",
+                            role="implementer",
+                            provider="codex",
+                            status="success",
+                            duration_seconds=1.2,
+                            output_summary="",
+                            output="implementer full output",
+                        ),
+                        SimpleNamespace(
+                            turn_id="t2",
+                            role="reviewer",
+                            provider="gemini",
+                            status="error",
+                            duration_seconds=0.8,
+                            output_summary="review failed",
+                            output="review failed details",
+                        ),
+                    ],
+                    artifacts=[
+                        SimpleNamespace(
+                            artifact_id="trace-1",
+                            name="trace",
+                            parts=[SimpleNamespace(text="debug trace")],
+                            metadata={"type": "trace"},
+                        ),
+                        SimpleNamespace(
+                            artifact_id="artifact-1",
+                            name="summary",
+                            parts=[
+                                SimpleNamespace(text="hello"),
+                                SimpleNamespace(text=" world"),
+                            ],
+                            metadata={"type": "summary"},
+                        ),
+                    ],
+                )
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_policy"),
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.a2a.patterns.get_pattern", return_value=pattern),
+            patch("modelmux.server.CollaborationEngine", FakeEngine),
+            patch("modelmux.server.log_result") as mock_log_result,
+        ):
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_collaborate(
+                task="review the branch",
+                pattern="review",
+                ctx=ctx,
+                workdir=".",
+                sandbox="read-only",
+                timeout=90,
+            )
+
+        data = json.loads(result)
+        assert data["state"] == "completed"
+        assert data["providers_used"] == ["codex", "gemini"]
+        assert data["final_output"] == "implementer full output"
+        assert data["turns"][0]["output_summary"] == "implementer full output"
+        assert data["turns"][1]["output_summary"] == "review failed"
+        assert data["artifacts"] == [
+            {
+                "id": "artifact-1",
+                "name": "summary",
+                "content": "hello world",
+            }
+        ]
+        assert ("info", "Starting 'review' collaboration...") in ctx._messages
+        assert ("info", "round 1") in ctx._messages
+        assert mock_check.call_count == 2
+        mock_log_result.assert_called_once()
 
 
 # --- _detect_and_build_exclusions tests ---

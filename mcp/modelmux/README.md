@@ -16,6 +16,9 @@ claude mcp add modelmux -s user -- uvx modelmux
 # [mcp_servers.modelmux]
 # command = "uvx"
 # args = ["modelmux"]
+# tool_timeout_sec = 600
+# startup_timeout_sec = 30
+# Leave enabled_tools unset to expose the full tool surface.
 
 # Gemini CLI (~/.gemini/settings.json)
 # {"mcpServers": {"modelmux": {"command": "uvx", "args": ["modelmux"]}}}
@@ -27,7 +30,13 @@ claude mcp add modelmux -s user -- uvx modelmux
   - `provider`: `"auto"` / `"codex"` / `"gemini"` / `"claude"` / `"ollama"`
   - `task`: The prompt to send
   - `workdir`, `sandbox`, `session_id`, `timeout`, `model`, `profile`, `reasoning_effort`, `failover`
+- **`mux_broadcast`** — Send the same task to multiple providers in parallel
+- **`mux_history`** — Query past runs and aggregated analytics
+- **`mux_orchestrate`** — Manage orchestration task state and lifecycle
+- **`mux_feedback`** — Submit user ratings to improve routing
+- **`mux_workflow`** — Run built-in multi-step provider pipelines
 - **`mux_check`** — Check which CLIs are available, show detected caller and config
+- **`mux_collaborate`** — Run iterative multi-agent collaboration patterns
 
 ## Smart Routing
 

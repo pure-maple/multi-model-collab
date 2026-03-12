@@ -97,8 +97,9 @@ install_claude() {
     fi
     info "Claude Code: modelmux registered (user scope)"
     echo ""
-    echo "  Optional: auto-approve tool calls by adding to ~/.claude/settings.json:"
-    echo '    "permissions": { "allow": ["mcp__modelmux__mux_dispatch"] }'
+    echo "  Optional: auto-approve common tool calls by adding to ~/.claude/settings.json:"
+    echo '    "permissions": { "allow": ["mcp__modelmux__mux_dispatch", "mcp__modelmux__mux_broadcast", "mcp__modelmux__mux_check"] }'
+    echo "    Add other tools explicitly if you want workflow/collaborate/history access without prompts."
 }
 
 install_codex() {
@@ -127,7 +128,7 @@ install_codex() {
 command = "uvx"
 args = ${uvx_args}
 required = false
-enabled_tools = ["mux_dispatch", "mux_check"]
+# Leave enabled_tools unset so new MCP tools stay available without reinstalling.
 tool_timeout_sec = 600
 startup_timeout_sec = 30
 TOML

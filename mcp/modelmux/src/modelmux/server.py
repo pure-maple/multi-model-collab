@@ -614,9 +614,7 @@ async def mux_dispatch(
 
     # ── Category binding: intent → model + prompt + params ──
     _binding_intent = classify_intent(task)
-    _binding = get_category_binding(
-        _binding_intent.primary.value, config, profile_name
-    )
+    _binding = get_category_binding(_binding_intent.primary.value, config, profile_name)
     if _binding:
         # Override provider when auto-routed and binding specifies preferred_model
         if base_provider == "auto" and _binding.preferred_model:
@@ -643,17 +641,13 @@ async def mux_dispatch(
     # Skipped when: auto_prompt_append is False, confidence < 0.3,
     # or the binding already provided a prompt_template.
     _prof_for_append = config.profiles.get(profile_name)
-    _auto_append = (
-        _prof_for_append.auto_prompt_append if _prof_for_append else True
-    )
+    _auto_append = _prof_for_append.auto_prompt_append if _prof_for_append else True
     if (
         _auto_append
         and _binding_intent.confidence >= 0.3
         and not (_binding and _binding.prompt_template)
     ):
-        _cat_prompt = _DEFAULT_CATEGORY_PROMPTS.get(
-            _binding_intent.primary.value, ""
-        )
+        _cat_prompt = _DEFAULT_CATEGORY_PROMPTS.get(_binding_intent.primary.value, "")
         if _cat_prompt:
             task = f"{task}\n\n[Guidance: {_cat_prompt}]"
 
@@ -703,8 +697,7 @@ async def mux_dispatch(
                     "provider": actual_provider,
                     "status": "blocked",
                     "error": (
-                        f"Security check failed: "
-                        f"{security_result.findings[0].category}"
+                        f"Security check failed: {security_result.findings[0].category}"
                     ),
                     "findings": [
                         {
@@ -956,7 +949,6 @@ async def mux_dispatch(
 
     # ── Async mode: run in background and return immediately ──
     if async_mode:
-
         # Create pause event (set = running, cleared = paused)
         pause_event = asyncio.Event()
         pause_event.set()  # start in running state
@@ -972,25 +964,19 @@ async def mux_dispatch(
                 await pause_event.wait()
                 result_dict = json.loads(result_json)
                 dispatch_status.status = result_dict.get("status", "success")
-                dispatch_status.elapsed_seconds = round(
-                    time.time() - start_time, 1
-                )
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
                 dispatch_status.paused = False
                 dispatch_status.result = result_dict
                 write_status(dispatch_status)
             except asyncio.CancelledError:
                 dispatch_status.status = "cancelled"
-                dispatch_status.elapsed_seconds = round(
-                    time.time() - start_time, 1
-                )
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
                 dispatch_status.paused = False
                 write_status(dispatch_status)
             except Exception as exc:
                 dispatch_status.status = "error"
                 dispatch_status.error = str(exc)[:500]
-                dispatch_status.elapsed_seconds = round(
-                    time.time() - start_time, 1
-                )
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
                 dispatch_status.paused = False
                 write_status(dispatch_status)
             finally:
@@ -1273,8 +1259,8 @@ async def mux_task_resume(
 async def mux_task_list() -> str:
     """List all currently active async dispatch tasks.
 
-    Reads status files from ~/.config/modelmux/status/ directory (path kept for compatibility) and
-    returns tasks sorted by start time with basic metadata.
+    Reads status files from the modelmux status directory
+    and returns tasks sorted by start time with basic metadata.
     """
     statuses = list_active()
     now = time.time()
@@ -1951,9 +1937,7 @@ async def mux_workflow(
         wf_state.current_step = i
         save_workflow_state(wf_state)
 
-        await ctx.info(
-            f"Step {i + 1}/{len(wf.steps)}: {step.name} → {provider}..."
-        )
+        await ctx.info(f"Step {i + 1}/{len(wf.steps)}: {step.name} → {provider}...")
 
         adapter = _get_adapter(provider)
         if not adapter.check_available():

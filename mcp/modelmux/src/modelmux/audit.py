@@ -125,12 +125,18 @@ def log_security_event(
         d.mkdir(parents=True, exist_ok=True)
         findings_data = []
         for f in getattr(result, "findings", []):
-            findings_data.append({
-                "category": f.category,
-                "pattern_name": f.pattern_name,
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "matched_text": f.matched_text,
-            })
+            findings_data.append(
+                {
+                    "category": f.category,
+                    "pattern_name": f.pattern_name,
+                    "severity": (
+                        f.severity.value
+                        if hasattr(f.severity, "value")
+                        else str(f.severity)
+                    ),
+                    "matched_text": f.matched_text,
+                }
+            )
         entry = {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "event": "security_scan",

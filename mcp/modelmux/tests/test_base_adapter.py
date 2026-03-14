@@ -1,5 +1,6 @@
 """Tests for the base adapter module (AdapterResult, TokenUsage, utilities)."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -289,6 +290,30 @@ class TestBaseAdapterRun:
         assert "Running test CLI..." in progress_msgs
         assert "line1" in progress_msgs
         assert "line2" in progress_msgs
+
+    @pytest.mark.asyncio
+    async def test_run_yields_to_event_loop_during_streaming(self):
+        adapter = _TestAdapter()
+        run_finished = False
+
+        def fake_stream(*a, **kw):
+            for idx in range(20):
+                yield f"line{idx}"
+            return 0
+
+        async def do_run():
+            nonlocal run_finished
+            await adapter.run(prompt="hi", workdir="/tmp")
+            run_finished = True
+
+        async def observer():
+            await asyncio.sleep(0)
+            return run_finished
+
+        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+            _, saw_finished = await asyncio.gather(do_run(), observer())
+
+        assert saw_finished is False
 
     @pytest.mark.asyncio
     async def test_sanitizes_extra_args(self):

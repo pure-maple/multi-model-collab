@@ -26,13 +26,16 @@ class DispatchStatus:
     run_id: str = ""
     provider: str = ""
     task_summary: str = ""
-    status: str = "pending"  # pending | running | success | error | timeout
+    status: str = "pending"  # pending | running | success | error | timeout | cancelled
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
     output_preview: str = ""
     output_lines: int = 0
     error: str = ""
     failover_from: str = ""
+    async_mode: bool = False
+    paused: bool = False
+    result: dict | None = None
 
 
 def _safe_filename(run_id: str) -> str:
@@ -69,6 +72,27 @@ def remove_status(run_id: str) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def read_status(run_id: str) -> DispatchStatus | None:
+    """Read status for a specific run_id. Returns None if not found."""
+    try:
+        safe_id = _safe_filename(run_id)
+        if not safe_id:
+            return None
+        path = _status_dir() / f"{safe_id}.json"
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return DispatchStatus(
+            **{
+                k: v
+                for k, v in data.items()
+                if k in DispatchStatus.__dataclass_fields__
+            }
+        )
+    except (json.JSONDecodeError, OSError, TypeError):
+        return None
 
 
 def list_active() -> list[DispatchStatus]:

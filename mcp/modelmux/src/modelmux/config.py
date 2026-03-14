@@ -5,6 +5,7 @@ Loads profiles and routing rules from:
   2. User-level:    ~/.config/modelmux/profiles.{json,toml,yaml}
   3. Built-in defaults                                      (lowest priority)
 
+Config paths use "modelmux" for backward compatibility (product name: Plexus).
 Config format is auto-detected by file extension.
 """
 
@@ -93,11 +94,28 @@ class ProviderConfig:
 
 
 @dataclass
+class CategoryBinding:
+    """Intent-category → model + prompt + parameters triple binding.
+
+    Maps an IntentCategory value (e.g. "code-gen", "review") to a
+    preferred model, system prompt template, and extra parameters.
+    """
+
+    preferred_model: str = ""  # e.g. "codex/o3-pro", "dashscope/kimi-k2.5"
+    prompt_template: str = ""  # System prompt or template name
+    parameters: dict[str, Any] = field(default_factory=dict)  # Extra params
+
+
+@dataclass
 class Profile:
     """A named configuration profile."""
 
     description: str = ""
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
+    category_bindings: dict[str, CategoryBinding] = field(
+        default_factory=dict
+    )  # IntentCategory.value → binding
+    auto_prompt_append: bool = True  # Enable per-category prompt appending
 
 
 @dataclass
@@ -192,14 +210,28 @@ def _parse_provider_config(data: dict[str, Any]) -> ProviderConfig:
     )
 
 
+def _parse_category_binding(data: dict[str, Any]) -> CategoryBinding:
+    return CategoryBinding(
+        preferred_model=data.get("preferred_model", ""),
+        prompt_template=data.get("prompt_template", ""),
+        parameters=data.get("parameters", {}),
+    )
+
+
 def _parse_profile(data: dict[str, Any]) -> Profile:
     providers = {}
     for name, pdata in data.get("providers", {}).items():
         if isinstance(pdata, dict):
             providers[name] = _parse_provider_config(pdata)
+    bindings = {}
+    for cat_name, bdata in data.get("category_bindings", {}).items():
+        if isinstance(bdata, dict):
+            bindings[cat_name] = _parse_category_binding(bdata)
     return Profile(
         description=data.get("description", ""),
         providers=providers,
+        category_bindings=bindings,
+        auto_prompt_append=data.get("auto_prompt_append", True),
     )
 
 
@@ -326,6 +358,31 @@ def load_config(workdir: str = ".") -> MuxConfig:
 def get_active_profile(config: MuxConfig) -> Profile | None:
     """Get the currently active profile, or None if default."""
     return config.profiles.get(config.active_profile)
+
+
+def get_category_binding(
+    category: str,
+    config: MuxConfig,
+    profile_name: str = "",
+) -> CategoryBinding | None:
+    """Look up a CategoryBinding for an intent category.
+
+    Checks the specified profile (or active profile) for a binding.
+    Falls back to RoleTemplate.recommended_models if no binding exists.
+
+    Args:
+        category: IntentCategory value string (e.g. "code-gen", "review").
+        config: Loaded MuxConfig.
+        profile_name: Profile to check. Uses active_profile if empty.
+
+    Returns:
+        CategoryBinding or None if no binding is configured.
+    """
+    name = profile_name or config.active_profile
+    profile = config.profiles.get(name)
+    if profile and category in profile.category_bindings:
+        return profile.category_bindings[category]
+    return None
 
 
 def route_by_rules(task: str, rules: list[RoutingRule], default: str = "codex") -> str:

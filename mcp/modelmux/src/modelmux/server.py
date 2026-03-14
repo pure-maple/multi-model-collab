@@ -1,8 +1,10 @@
-"""modelmux — model multiplexer for multi-model AI collaboration.
+"""Plexus — unified multi-model AI collaboration server.
 
 Routes tasks to Codex CLI, Gemini CLI, or Claude Code CLI,
 returning results in a canonical schema. Supports user-defined profiles for
 third-party model configuration and custom routing rules.
+
+Internal package name: modelmux (kept for backward compatibility).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from modelmux.audit import AuditEntry, count_recent, get_audit_stats, log_dispat
 from modelmux.compare import compare_results
 from modelmux.config import (
     MuxConfig,
+    get_category_binding,
     load_config,
     route_by_rules,
 )
@@ -51,22 +54,35 @@ from modelmux.orchestrate import (
 )
 from modelmux.orchestrate_store import OrchestrateStore
 from modelmux.policy import check_policy, load_policy
-from modelmux.routing import smart_route
-from modelmux.status import DispatchStatus, list_active, remove_status, write_status
+from modelmux.routing import classify_intent, smart_route
+from modelmux.security import ThreatLevel, scan_task
+from modelmux.status import (
+    DispatchStatus,
+    list_active,
+    read_status,
+    remove_status,
+    write_status,
+)
 from modelmux.workflow import (
     BUILTIN_WORKFLOWS,
+    StepState,
     Workflow,
+    create_workflow_state,
+    find_resume_step,
+    list_workflow_states,
+    load_workflow_state,
     parse_workflows,
     render_task,
+    save_workflow_state,
 )
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
-    "modelmux",
+    "Plexus",
     instructions=(
-        "modelmux — model multiplexer. Use mux_dispatch to send "
+        "Plexus — multi-model AI collaboration server. Use mux_dispatch to send "
         "a task to one AI model, or mux_broadcast to send the same "
         "task to multiple models in parallel for consensus/comparison. "
         "Use provider='auto' for smart routing. "
@@ -77,6 +93,49 @@ mcp = FastMCP(
 # Adapter instances (lazy-initialized)
 _adapter_cache: dict[str, BaseAdapter] = {}
 _orchestrate_store: OrchestrateStore | None = None
+
+# Async dispatch task references (for cancellation support)
+_async_tasks: dict[str, asyncio.Task] = {}  # run_id → asyncio.Task
+
+# Pause events for async tasks (set = running, cleared = paused)
+_pause_events: dict[str, asyncio.Event] = {}  # run_id → asyncio.Event
+
+# Default per-category prompt snippets (MER-93).
+# Used when no CategoryBinding.prompt_template is configured.
+_DEFAULT_CATEGORY_PROMPTS: dict[str, str] = {
+    "code-gen": (
+        "Write clean, well-structured code. Include error handling "
+        "where appropriate. Follow existing project conventions."
+    ),
+    "review": (
+        "Focus on correctness, security vulnerabilities, performance "
+        "issues, and maintainability. Be specific about what to fix and why."
+    ),
+    "analysis": (
+        "Provide thorough analysis with evidence. Consider multiple "
+        "perspectives. Summarize key findings clearly."
+    ),
+    "debug": (
+        "Systematically identify the root cause. Explain the bug "
+        "mechanism. Provide a minimal, targeted fix."
+    ),
+    "docs": (
+        "Write clear, concise documentation. Use consistent formatting. "
+        "Include examples where helpful."
+    ),
+    "research": (
+        "Compare options objectively. List pros and cons. "
+        "Make a recommendation with rationale."
+    ),
+    "refactor": (
+        "Preserve existing behavior. Improve readability and "
+        "maintainability. Explain the refactoring strategy."
+    ),
+    "test": (
+        "Cover edge cases and error paths. Use descriptive test names. "
+        "Follow existing test patterns in the project."
+    ),
+}
 
 
 def _auto_route(
@@ -125,6 +184,7 @@ def _ensure_custom_providers_loaded() -> None:
 
     from modelmux.config import _find_config_file, _load_file
 
+    # Config dirs kept as "modelmux" for backward compatibility (Plexus rebrand).
     for cfg_dir in [
         Path.home() / ".config" / "modelmux",
         Path.cwd() / ".modelmux",
@@ -485,6 +545,7 @@ async def mux_dispatch(
     failover: bool = True,
     max_retries: int = 1,
     auto_decompose: bool = False,
+    async_mode: bool = False,
 ) -> str:
     """Dispatch a task to an AI model CLI and return the result.
 
@@ -517,6 +578,9 @@ async def mux_dispatch(
         auto_decompose: Automatically decompose complex tasks into subtasks,
             route each to the best-suited provider, and merge results.
             Uses the selected provider as planner. Default False.
+        async_mode: Run dispatch in background and return immediately with
+            a run_id (default False). Use mux_task_status to poll for
+            results, and mux_task_cancel to cancel a running task.
     """
     _ensure_custom_providers_loaded()
 
@@ -535,6 +599,7 @@ async def mux_dispatch(
     base_provider, spec_model = _parse_provider_spec(provider)
     if spec_model and not model:
         model = spec_model
+    original_task = task
 
     # Auto-route if needed
     actual_provider = base_provider
@@ -547,6 +612,46 @@ async def mux_dispatch(
             or (not isinstance(a, BaseAdapter) and a().check_available())
         ]
         actual_provider = _auto_route(task, config, available, excluded)
+
+    # ── Category binding: intent → model + prompt + params ──
+    _binding_intent = classify_intent(task)
+    _binding = get_category_binding(_binding_intent.primary.value, config, profile_name)
+    if _binding:
+        # Override provider when auto-routed and binding specifies preferred_model
+        if base_provider == "auto" and _binding.preferred_model:
+            bp, bm = _parse_provider_spec(_binding.preferred_model)
+            if bp not in excluded:
+                actual_provider = bp
+                if bm and not model:
+                    model = bm
+        # Prepend prompt template to task
+        if _binding.prompt_template:
+            task = f"[System: {_binding.prompt_template}]\n\n{task}"
+        # Stash binding parameters for later merge into extra_args
+        if _binding.parameters:
+            # sandbox override from binding (only when caller didn't set it)
+            if "sandbox" in _binding.parameters and sandbox == "read-only":
+                sandbox = _binding.parameters["sandbox"]
+            # reasoning_effort from binding (only when caller didn't set it)
+            if "reasoning_effort" in _binding.parameters and not reasoning_effort:
+                reasoning_effort = _binding.parameters["reasoning_effort"]
+
+    # ── Per-category prompt append (MER-93) ──
+    # Append a guidance snippet based on intent category.
+    # Uses binding.prompt_template if configured (already prepended above),
+    # otherwise falls back to _DEFAULT_CATEGORY_PROMPTS.
+    # Skipped when: auto_prompt_append is False, confidence < 0.3,
+    # or the binding already provided a prompt_template.
+    _prof_for_append = config.profiles.get(profile_name)
+    _auto_append = _prof_for_append.auto_prompt_append if _prof_for_append else True
+    if (
+        _auto_append
+        and _binding_intent.confidence >= 0.3
+        and not (_binding and _binding.prompt_template)
+    ):
+        _cat_prompt = _DEFAULT_CATEGORY_PROMPTS.get(_binding_intent.primary.value, "")
+        if _cat_prompt:
+            task = f"{task}\n\n[Guidance: {_cat_prompt}]"
 
     # Warn if explicitly dispatching to self
     is_self_dispatch = (
@@ -576,10 +681,43 @@ async def mux_dispatch(
                 "run_id": "",
                 "provider": actual_provider,
                 "status": "blocked",
+                "task_summary": original_task[:100],
                 "error": f"Policy denied: {policy_result.reason}",
             },
             indent=2,
         )
+
+    # Security scan — detect prompt injection and credential leaks
+    security_result = scan_task(original_task, policy_overrides=policy.security)
+    if not security_result.passed:
+        from modelmux.audit import log_security_event
+
+        log_security_event(security_result, task_summary=original_task[:100])
+        if security_result.action == ThreatLevel.BLOCK:
+            return json.dumps(
+                {
+                    "run_id": "",
+                    "provider": actual_provider,
+                    "status": "blocked",
+                    "task_summary": original_task[:100],
+                    "error": (
+                        f"Security check failed: {security_result.findings[0].category}"
+                    ),
+                    "findings": [
+                        {
+                            "category": f.category,
+                            "pattern": f.pattern_name,
+                        }
+                        for f in security_result.findings
+                    ],
+                },
+                indent=2,
+            )
+    elif security_result.findings:
+        # WARN or LOG_ONLY level — log but continue
+        from modelmux.audit import log_security_event
+
+        log_security_event(security_result, task_summary=original_task[:100])
 
     adapter = _get_adapter(actual_provider)
 
@@ -635,6 +773,14 @@ async def mux_dispatch(
     extra_args, env_overrides = _build_extra_args(
         actual_provider, model, profile, reasoning_effort, active_prof
     )
+    extra_args = extra_args or {}
+    env_overrides = env_overrides or {}
+
+    # Merge binding parameters into extra_args (binding values lose to explicit)
+    if _binding and _binding.parameters:
+        for k, v in _binding.parameters.items():
+            if k not in ("sandbox", "reasoning_effort") and k not in extra_args:
+                extra_args[k] = v
 
     # Status tracking for real-time monitoring
     run_id = str(uuid.uuid4())[:8]
@@ -645,6 +791,7 @@ async def mux_dispatch(
         task_summary=task[:200],
         status="running",
         started_at=start_time,
+        async_mode=async_mode,
     )
     write_status(dispatch_status)
 
@@ -653,9 +800,12 @@ async def mux_dispatch(
     _line_count = [0]
     STATUS_WRITE_INTERVAL = 0.5
 
+    # Async tasks get longer output previews for richer monitoring
+    _preview_max = 2000 if async_mode else 200
+
     def on_progress(msg: str) -> None:
         _line_count[0] += 1
-        dispatch_status.output_preview = msg[:200]
+        dispatch_status.output_preview = msg[:_preview_max]
         dispatch_status.output_lines = _line_count[0]
         dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
         now = time.time()
@@ -663,130 +813,485 @@ async def mux_dispatch(
             _last_status_write[0] = now
             write_status(dispatch_status)
 
-    await ctx.info(f"Dispatching to {actual_provider}...")
+    async def _run_dispatch_core() -> str:
+        """Core dispatch logic: run adapter, retry, failover, log."""
+        nonlocal actual_provider, adapter
 
-    # Clamp max_retries to [1, 5]
-    effective_retries = max(1, min(max_retries, 5))
+        # Clamp max_retries to [1, 5]
+        effective_retries = max(1, min(max_retries, 5))
 
-    result = await adapter.run(
-        prompt=task,
-        workdir=resolved_workdir,
-        sandbox=sandbox,
-        session_id=session_id,
-        timeout=timeout,
-        extra_args=extra_args if extra_args else None,
-        env_overrides=env_overrides if env_overrides else None,
-        on_progress=on_progress,
-    )
-
-    # Same-provider retry with exponential backoff
-    should_retry = (
-        result.status in ("error", "timeout")
-        and effective_retries > 1
-        and not session_id
-    )
-    if should_retry:
-        for attempt in range(2, effective_retries + 1):
-            backoff = 2 ** (attempt - 1)  # 2s, 4s, 8s, 16s
-            await ctx.info(
-                f"Attempt {attempt}/{effective_retries}: "
-                f"retrying {actual_provider} in {backoff}s..."
-            )
-            await asyncio.sleep(backoff)
-
-            dispatch_status.status = "running"
-            dispatch_status.output_preview = f"retry #{attempt}"
-            write_status(dispatch_status)
-
-            result = await adapter.run(
-                prompt=task,
-                workdir=resolved_workdir,
-                sandbox=sandbox,
-                session_id=session_id,
-                timeout=timeout,
-                extra_args=extra_args if extra_args else None,
-                env_overrides=env_overrides if env_overrides else None,
-                on_progress=on_progress,
-            )
-            if result.status not in ("error", "timeout"):
-                break
-
-    # Execution failover to other providers
-    failover_from = ""
-    can_failover = failover and result.status == "error" and not session_id
-    if can_failover:
-        candidates = _get_fallback_candidates(actual_provider, excluded)
-        for fb_name in candidates:
-            fb_adapter = _get_adapter(fb_name)
-            if not fb_adapter.check_available():
-                continue
-
-            await ctx.info(
-                f"{actual_provider} failed ({result.error}), retrying with {fb_name}..."
-            )
-            failover_from = actual_provider
-
-            # Update status for failover
-            dispatch_status.provider = fb_name
-            dispatch_status.failover_from = actual_provider
-            dispatch_status.status = "running"
-            write_status(dispatch_status)
-
-            fb_extra, fb_env = _build_extra_args(
-                fb_name, model, profile, reasoning_effort, active_prof
-            )
-            fb_result = await fb_adapter.run(
-                prompt=task,
-                workdir=resolved_workdir,
-                sandbox=sandbox,
-                session_id="",
-                timeout=timeout,
-                extra_args=fb_extra if fb_extra else None,
-                env_overrides=fb_env if fb_env else None,
-                on_progress=on_progress,
-            )
-            if fb_result.status != "error":
-                actual_provider = fb_name
-                adapter = fb_adapter
-                result = fb_result
-                break
-
-    # Clean up status file (dispatch complete)
-    remove_status(run_id)
-
-    result_dict = result.to_dict()
-    if provider == "auto":
-        result_dict["routed_from"] = "auto"
-        if caller.provider:
-            result_dict["caller_excluded"] = caller.provider
-    if failover_from:
-        result_dict["failover_from"] = failover_from
-    if profile_name != "default" and active_prof:
-        result_dict["profile"] = profile_name
-
-    # Audit logging
-    log_dispatch(
-        AuditEntry(
-            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            provider=actual_provider,
-            task_summary=task[:200],
-            status=result.status,
-            duration_seconds=result.duration_seconds,
-            caller=caller.client_name,
-            caller_platform=caller.platform,
-            routed_from="auto" if provider == "auto" else "",
-            profile=profile_name if profile_name != "default" else "",
+        result = await adapter.run(
+            prompt=task,
+            workdir=resolved_workdir,
             sandbox=sandbox,
-            model=extra_args.get("model", ""),
-            session_id=result.session_id,
-            error=result.error,
+            session_id=session_id,
+            timeout=timeout,
+            extra_args=extra_args if extra_args else None,
+            env_overrides=env_overrides if env_overrides else None,
+            on_progress=on_progress,
         )
+
+        # Same-provider retry with exponential backoff
+        should_retry = (
+            result.status in ("error", "timeout")
+            and effective_retries > 1
+            and not session_id
+        )
+        if should_retry:
+            for attempt in range(2, effective_retries + 1):
+                backoff = 2 ** (attempt - 1)  # 2s, 4s, 8s, 16s
+                if not async_mode:
+                    await ctx.info(
+                        f"Attempt {attempt}/{effective_retries}: "
+                        f"retrying {actual_provider} in {backoff}s..."
+                    )
+                await asyncio.sleep(backoff)
+
+                dispatch_status.status = "running"
+                dispatch_status.output_preview = f"retry #{attempt}"
+                write_status(dispatch_status)
+
+                result = await adapter.run(
+                    prompt=task,
+                    workdir=resolved_workdir,
+                    sandbox=sandbox,
+                    session_id=session_id,
+                    timeout=timeout,
+                    extra_args=extra_args if extra_args else None,
+                    env_overrides=env_overrides if env_overrides else None,
+                    on_progress=on_progress,
+                )
+                if result.status not in ("error", "timeout"):
+                    break
+
+        # Execution failover to other providers
+        failover_from = ""
+        can_failover = failover and result.status == "error" and not session_id
+        if can_failover:
+            candidates = _get_fallback_candidates(actual_provider, excluded)
+            for fb_name in candidates:
+                fb_adapter = _get_adapter(fb_name)
+                if not fb_adapter.check_available():
+                    continue
+
+                if not async_mode:
+                    await ctx.info(
+                        f"{actual_provider} failed ({result.error}), "
+                        f"retrying with {fb_name}..."
+                    )
+                failover_from = actual_provider
+
+                # Update status for failover
+                dispatch_status.provider = fb_name
+                dispatch_status.failover_from = actual_provider
+                dispatch_status.status = "running"
+                write_status(dispatch_status)
+
+                fb_extra, fb_env = _build_extra_args(
+                    fb_name, model, profile, reasoning_effort, active_prof
+                )
+                fb_result = await fb_adapter.run(
+                    prompt=task,
+                    workdir=resolved_workdir,
+                    sandbox=sandbox,
+                    session_id="",
+                    timeout=timeout,
+                    extra_args=fb_extra if fb_extra else None,
+                    env_overrides=fb_env if fb_env else None,
+                    on_progress=on_progress,
+                )
+                if fb_result.status != "error":
+                    actual_provider = fb_name
+                    adapter = fb_adapter
+                    result = fb_result
+                    break
+
+        # Clean up status file (sync dispatch only; async keeps it)
+        if not async_mode:
+            remove_status(run_id)
+
+        result_dict = result.to_dict()
+        if provider == "auto":
+            result_dict["routed_from"] = "auto"
+            if caller.provider:
+                result_dict["caller_excluded"] = caller.provider
+        if failover_from:
+            result_dict["failover_from"] = failover_from
+        if profile_name != "default" and active_prof:
+            result_dict["profile"] = profile_name
+
+        # Audit logging
+        log_dispatch(
+            AuditEntry(
+                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                provider=actual_provider,
+                task_summary=task[:200],
+                status=result.status,
+                duration_seconds=result.duration_seconds,
+                caller=caller.client_name,
+                caller_platform=caller.platform,
+                routed_from="auto" if provider == "auto" else "",
+                profile=profile_name if profile_name != "default" else "",
+                sandbox=sandbox,
+                model=extra_args.get("model", ""),
+                session_id=result.session_id,
+                error=result.error,
+            )
+        )
+
+        # Intent classification for analytics (reuse pre-computed intent)
+        result_dict["intent"] = {
+            "category": _binding_intent.primary.value,
+            "confidence": _binding_intent.confidence,
+            "signals": _binding_intent.signals[:5],
+        }
+        if _binding:
+            result_dict["intent"]["binding_applied"] = True
+
+        # History (full result)
+        log_result(result_dict, task=task, source="dispatch")
+
+        return json.dumps(result_dict, indent=2, ensure_ascii=False)
+
+    # ── Async mode: run in background and return immediately ──
+    if async_mode:
+        # Create pause event (set = running, cleared = paused)
+        pause_event = asyncio.Event()
+        pause_event.set()  # start in running state
+
+        async def _run_async_wrapper() -> None:
+            """Background wrapper: runs dispatch, stores result in status."""
+            try:
+                # Check pause event before starting dispatch
+                await pause_event.wait()
+                result_json = await _run_dispatch_core()
+                result_dict = json.loads(result_json)
+                dispatch_status.status = result_dict.get("status", "success")
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
+                dispatch_status.paused = False
+                dispatch_status.result = result_dict
+                write_status(dispatch_status)
+            except asyncio.CancelledError:
+                dispatch_status.status = "cancelled"
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
+                dispatch_status.paused = False
+                write_status(dispatch_status)
+                raise
+            except Exception as exc:
+                dispatch_status.status = "error"
+                dispatch_status.error = str(exc)[:500]
+                dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
+                dispatch_status.paused = False
+                write_status(dispatch_status)
+            finally:
+                _async_tasks.pop(run_id, None)
+                _pause_events.pop(run_id, None)
+
+        bg_task = asyncio.create_task(_run_async_wrapper())
+        _async_tasks[run_id] = bg_task
+        _pause_events[run_id] = pause_event
+
+        return json.dumps(
+            {
+                "status": "accepted",
+                "run_id": run_id,
+                "provider": actual_provider,
+                "async_mode": True,
+            },
+            indent=2,
+        )
+
+    # ── Synchronous mode (default) ──
+    await ctx.info(f"Dispatching to {actual_provider}...")
+    return await _run_dispatch_core()
+
+
+@mcp.tool()
+async def mux_task_status(
+    run_id: str,
+    include_output: bool = False,
+) -> str:
+    """Query the status of an async dispatch task.
+
+    Args:
+        run_id: The run_id returned by mux_dispatch with async_mode=True.
+        include_output: Include the full output in the response when the
+            task has completed (default False, returns metadata only).
+    """
+    status = read_status(run_id)
+    if status is None:
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "not_found",
+                "error": f"No task found with run_id '{run_id}'.",
+            },
+            indent=2,
+        )
+
+    response: dict = {
+        "run_id": status.run_id,
+        "provider": status.provider,
+        "status": status.status,
+        "paused": status.paused,
+        "elapsed_seconds": status.elapsed_seconds,
+        "task_summary": status.task_summary,
+    }
+
+    if status.error:
+        response["error"] = status.error
+    if status.failover_from:
+        response["failover_from"] = status.failover_from
+
+    # Task still running or paused — include progress preview
+    if status.status == "running":
+        response["output_preview"] = status.output_preview
+        response["output_lines"] = status.output_lines
+
+    # Task completed — optionally include full result
+    if status.result is not None:
+        if include_output:
+            response["result"] = status.result
+        else:
+            # Return metadata without full output
+            response["result_status"] = status.result.get("status", "")
+            response["result_provider"] = status.result.get("provider", "")
+            if "duration_seconds" in status.result:
+                response["duration_seconds"] = status.result["duration_seconds"]
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+async def mux_task_cancel(
+    run_id: str,
+) -> str:
+    """Cancel a running async dispatch task.
+
+    Args:
+        run_id: The run_id of the async task to cancel.
+    """
+    # Check if task exists in memory
+    bg_task = _async_tasks.get(run_id)
+    if bg_task is None:
+        # Check if status file exists (task may have already completed)
+        status = read_status(run_id)
+        if status is None:
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "not_found",
+                    "error": f"No task found with run_id '{run_id}'.",
+                },
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": status.status,
+                "message": (
+                    "Task already completed."
+                    if status.status != "running"
+                    else "Task reference lost (server may have restarted)."
+                ),
+            },
+            indent=2,
+        )
+
+    # Cancel the asyncio task
+    bg_task.cancel()
+    # Wait for cancellation to propagate
+    try:
+        await bg_task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    # Ensure cleanup even if the finally block didn't run
+    _async_tasks.pop(run_id, None)
+    _pause_events.pop(run_id, None)
+
+    # Update status file to cancelled
+    status = read_status(run_id)
+    if status is not None and status.status == "running":
+        status.status = "cancelled"
+        write_status(status)
+
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "status": "cancelled",
+            "message": "Task cancellation requested.",
+        },
+        indent=2,
     )
 
-    # History (full result)
-    log_result(result_dict, task=task, source="dispatch")
 
-    return json.dumps(result_dict, indent=2, ensure_ascii=False)
+@mcp.tool()
+async def mux_task_pause(
+    run_id: str,
+) -> str:
+    """Pause a running async dispatch task.
+
+    Sets a pause flag that prevents the task from continuing after the
+    current adapter call completes. For tasks that haven't started their
+    adapter call yet, the pause takes effect immediately.
+
+    Args:
+        run_id: The run_id of the async task to pause.
+    """
+    # Check if task exists in memory
+    if run_id not in _async_tasks:
+        status = read_status(run_id)
+        if status is None:
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "not_found",
+                    "error": f"No task found with run_id '{run_id}'.",
+                },
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": status.status,
+                "message": (
+                    "Task already completed."
+                    if status.status != "running"
+                    else "Task reference lost (server may have restarted)."
+                ),
+            },
+            indent=2,
+        )
+
+    pause_event = _pause_events.get(run_id)
+    if pause_event is None:
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "error",
+                "error": "Pause event not found for this task.",
+            },
+            indent=2,
+        )
+
+    # Clear the event to pause the task
+    pause_event.clear()
+
+    # Update status file
+    status = read_status(run_id)
+    if status is not None:
+        status.paused = True
+        write_status(status)
+
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "status": "paused",
+            "message": "Task paused. Use mux_task_resume to continue.",
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def mux_task_resume(
+    run_id: str,
+) -> str:
+    """Resume a paused async dispatch task.
+
+    Clears the pause flag so the task continues execution.
+
+    Args:
+        run_id: The run_id of the async task to resume.
+    """
+    # Check if task exists in memory
+    if run_id not in _async_tasks:
+        status = read_status(run_id)
+        if status is None:
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "not_found",
+                    "error": f"No task found with run_id '{run_id}'.",
+                },
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": status.status,
+                "message": (
+                    "Task already completed."
+                    if status.status != "running"
+                    else "Task reference lost (server may have restarted)."
+                ),
+            },
+            indent=2,
+        )
+
+    pause_event = _pause_events.get(run_id)
+    if pause_event is None:
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "error",
+                "error": "Pause event not found for this task.",
+            },
+            indent=2,
+        )
+
+    # Set the event to resume the task
+    pause_event.set()
+
+    # Update status file
+    status = read_status(run_id)
+    if status is not None:
+        status.paused = False
+        write_status(status)
+
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "status": "resumed",
+            "message": "Task resumed.",
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def mux_task_list() -> str:
+    """List all currently active async dispatch tasks.
+
+    Reads status files from the modelmux status directory
+    and returns tasks sorted by start time with basic metadata.
+    """
+    statuses = list_active()
+    now = time.time()
+
+    tasks = []
+    for s in statuses:
+        elapsed = round(now - s.started_at, 1) if s.started_at else s.elapsed_seconds
+        tasks.append(
+            {
+                "run_id": s.run_id,
+                "provider": s.provider,
+                "status": s.status,
+                "paused": s.paused,
+                "elapsed_seconds": elapsed,
+                "task_summary": s.task_summary,
+            }
+        )
+
+    return json.dumps(
+        {
+            "total": len(tasks),
+            "tasks": tasks,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool()
@@ -1251,19 +1756,25 @@ async def mux_workflow(
     ctx: Context,
     workdir: str = ".",
     list_workflows: bool = False,
+    resume_id: str = "",
 ) -> str:
     """Execute a multi-step workflow pipeline across multiple AI models.
 
     Workflows chain multiple providers sequentially, where each step
-    can reference outputs from previous steps. Use list_workflows=True
-    to see available workflows.
+    can reference outputs from previous steps. Workflow state is
+    persisted to disk after each step, enabling recovery from failures.
+
+    Use list_workflows=True to see available workflows.
+    Use resume_id to resume a previously failed/paused workflow.
 
     Args:
         workflow: Workflow name (e.g. "review", "consensus").
         task: The input task/prompt that starts the pipeline.
         workdir: Working directory for all steps.
         list_workflows: If True, ignore other params and return
-            available workflow definitions.
+            available workflow definitions (includes persisted states).
+        resume_id: If provided, resume a persisted workflow by its ID
+            instead of starting fresh.
     """
     resolved_workdir = str(Path(workdir).resolve())
 
@@ -1288,24 +1799,87 @@ async def mux_workflow(
     all_workflows = {**BUILTIN_WORKFLOWS, **user_workflows}
 
     if list_workflows:
-        listing = {}
+        listing: dict[str, dict] = {}
         for name, wf in all_workflows.items():
             listing[name] = {
                 "description": wf.description,
                 "steps": [{"name": s.name, "provider": s.provider} for s in wf.steps],
             }
+        # Include persisted workflow states
+        persisted = list_workflow_states()
+        if persisted:
+            listing["__persisted__"] = {
+                "description": "Persisted workflow runs (resumable)",
+                "workflows": [
+                    {
+                        "workflow_id": s.workflow_id,
+                        "workflow_name": s.workflow_name,
+                        "status": s.status,
+                        "current_step": s.current_step,
+                        "total_steps": len(s.steps),
+                        "created_at": s.created_at,
+                        "updated_at": s.updated_at,
+                    }
+                    for s in persisted
+                ],
+            }
         return json.dumps(listing, indent=2, ensure_ascii=False)
 
-    wf = all_workflows.get(workflow)
-    if not wf:
-        return json.dumps(
-            {
-                "status": "error",
-                "error": f"Unknown workflow: '{workflow}'. "
-                f"Available: {', '.join(all_workflows.keys())}",
-            },
-            indent=2,
+    # --- Resume mode ---
+    if resume_id:
+        persisted_state = load_workflow_state(resume_id)
+        if not persisted_state:
+            return json.dumps(
+                {
+                    "status": "error",
+                    "error": f"No persisted workflow found with id '{resume_id}'.",
+                },
+                indent=2,
+            )
+        # Find the workflow definition to get step details
+        wf = all_workflows.get(persisted_state.workflow_name)
+        if not wf:
+            return json.dumps(
+                {
+                    "status": "error",
+                    "error": f"Workflow definition '{persisted_state.workflow_name}' "
+                    f"not found. Cannot resume.",
+                },
+                indent=2,
+            )
+        resume_idx = find_resume_step(persisted_state)
+        if resume_idx < 0:
+            return json.dumps(
+                {
+                    "status": "completed",
+                    "message": f"Workflow '{resume_id}' already completed.",
+                },
+                indent=2,
+            )
+        await ctx.info(
+            f"Resuming workflow '{resume_id}' from step {resume_idx + 1} "
+            f"({persisted_state.steps[resume_idx].name})..."
         )
+        wf_state = persisted_state
+        wf_state.status = "running"
+        task = wf_state.original_task or task
+        start_step = resume_idx
+    else:
+        wf = all_workflows.get(workflow)
+        if not wf:
+            return json.dumps(
+                {
+                    "status": "error",
+                    "error": f"Unknown workflow: '{workflow}'. "
+                    f"Available: {', '.join(all_workflows.keys())}",
+                },
+                indent=2,
+            )
+        # Create persistent state for the new workflow
+        wf_id = str(uuid.uuid4())[:8]
+        wf_state = create_workflow_state(wf_id, wf, original_task=task)
+        wf_state.status = "running"
+        start_step = 0
 
     # Policy check — validate all providers used in workflow steps
     policy = load_policy()
@@ -1333,20 +1907,51 @@ async def mux_workflow(
                 indent=2,
             )
 
-    await ctx.info(f"Starting workflow '{workflow}' ({len(wf.steps)} steps)...")
+    wf_name = wf.name or workflow
+    await ctx.info(f"Starting workflow '{wf_name}' ({len(wf.steps)} steps)...")
+
+    # Persist initial state
+    save_workflow_state(wf_state)
 
     # Execute steps sequentially
     context: dict[str, str] = {"input": task}
     step_results: list[dict] = []
 
-    for i, step in enumerate(wf.steps, 1):
+    # Rebuild context from already-completed steps
+    for i in range(start_step):
+        ps = wf_state.steps[i]
+        if ps.state == StepState.COMPLETED and ps.result:
+            context[ps.name] = ps.result.get("output", "")
+            step_results.append(
+                {
+                    "step": ps.name,
+                    "status": "skipped_on_resume",
+                    "previous_result": ps.result,
+                }
+            )
+
+    for i in range(start_step, len(wf.steps)):
+        step = wf.steps[i]
+        ps = wf_state.steps[i]
+
         rendered_task = render_task(step.task, context)
         provider = step.provider
 
-        await ctx.info(f"Step {i}/{len(wf.steps)}: {step.name} → {provider}...")
+        # Mark step as running
+        ps.state = StepState.RUNNING
+        ps.started_at = time.time()
+        wf_state.current_step = i
+        save_workflow_state(wf_state)
+
+        await ctx.info(f"Step {i + 1}/{len(wf.steps)}: {step.name} → {provider}...")
 
         adapter = _get_adapter(provider)
         if not adapter.check_available():
+            ps.state = StepState.FAILED
+            ps.error = f"{provider} CLI not available"
+            ps.completed_at = time.time()
+            save_workflow_state(wf_state)
+
             step_results.append(
                 {
                     "step": step.name,
@@ -1355,15 +1960,14 @@ async def mux_workflow(
                     "error": f"{provider} CLI not available",
                 }
             )
-            context[step.name] = f"[ERROR: {provider} not available]"
-            continue
+            break
 
         run_id = str(uuid.uuid4())[:8]
         start_time = time.time()
         status_obj = DispatchStatus(
             run_id=run_id,
             provider=provider,
-            task_summary=f"[{workflow}/{step.name}] {rendered_task[:100]}",
+            task_summary=f"[{wf_name}/{step.name}] {rendered_task[:100]}",
             status="running",
             started_at=start_time,
         )
@@ -1387,24 +1991,55 @@ async def mux_workflow(
                 wf_last_write[0] = now
                 write_status(status_obj)
 
-        result = await adapter.run(
-            prompt=rendered_task,
-            workdir=resolved_workdir,
-            sandbox=step.sandbox,
-            session_id="",
-            timeout=step.timeout,
-            extra_args=extra_args if extra_args else None,
-            on_progress=wf_on_prog,
-        )
+        try:
+            result = await adapter.run(
+                prompt=rendered_task,
+                workdir=resolved_workdir,
+                sandbox=step.sandbox,
+                session_id="",
+                timeout=step.timeout,
+                extra_args=extra_args if extra_args else None,
+                on_progress=wf_on_prog,
+            )
+        except Exception as exc:
+            remove_status(run_id)
+            ps.state = StepState.FAILED
+            ps.error = str(exc)
+            ps.completed_at = time.time()
+            ps.retry_count += 1
+            wf_state.status = "failed"
+            save_workflow_state(wf_state)
+            return json.dumps(
+                {
+                    "status": "failed",
+                    "workflow_id": wf_state.workflow_id,
+                    "error": f"Step '{step.name}' raised: {exc}",
+                    "resumable": True,
+                    "resume_id": wf_state.workflow_id,
+                },
+                indent=2,
+            )
 
         remove_status(run_id)
 
         # Store output for next steps
-        context[step.name] = result.output or result.error or ""
+        output_text = result.output or result.error or ""
+        context[step.name] = output_text
 
         step_result = result.to_dict()
         step_result["step"] = step.name
         step_results.append(step_result)
+
+        # Update persistent step state
+        if result.status == "success":
+            ps.state = StepState.COMPLETED
+            ps.result = {"output": output_text, "status": result.status}
+        else:
+            ps.state = StepState.FAILED
+            ps.error = result.error
+            ps.result = {"output": output_text, "status": result.status}
+        ps.completed_at = time.time()
+        save_workflow_state(wf_state)
 
         # Audit
         log_dispatch(
@@ -1414,15 +2049,25 @@ async def mux_workflow(
                 task_summary=rendered_task[:200],
                 status=result.status,
                 duration_seconds=result.duration_seconds,
-                routed_from=f"workflow:{workflow}",
+                routed_from=f"workflow:{wf_name}",
                 sandbox=step.sandbox,
                 model=step.model,
                 error=result.error,
             )
         )
+        if result.status != "success":
+            break
+
+    # Determine final status
+    all_ok = all(
+        s.state in (StepState.COMPLETED, StepState.SKIPPED) for s in wf_state.steps
+    )
+    wf_state.status = "completed" if all_ok else "failed"
+    save_workflow_state(wf_state)
 
     workflow_result = {
-        "workflow": workflow,
+        "workflow": wf_name,
+        "workflow_id": wf_state.workflow_id,
         "description": wf.description,
         "steps": step_results,
         "summary": {
@@ -1431,6 +2076,7 @@ async def mux_workflow(
             "total_duration": round(
                 sum(r.get("duration_seconds", 0) for r in step_results), 1
             ),
+            "resumable": not all_ok,
         },
     }
 

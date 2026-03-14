@@ -6,8 +6,9 @@ Four-signal routing:
   3. Benchmark quality: per-category quality scores from benchmark results
   4. User feedback: aggregated user ratings from feedback.jsonl
 
-Task classification maps incoming prompts to benchmark categories
-(analysis, generation, reasoning, language) for category-aware routing.
+Intent classification maps incoming prompts to structured categories
+(code-gen, review, analysis, debug, docs, research, refactor, test)
+for category-aware routing and logging.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +118,158 @@ _CATEGORY_PATTERNS: dict[str, re.Pattern] = {
         re.I,
     ),
 }
+
+# ── Structured intent classification ──
+
+
+class IntentCategory(str, Enum):
+    """Structured intent categories for task classification."""
+
+    CODE_GEN = "code-gen"
+    REVIEW = "review"
+    ANALYSIS = "analysis"
+    DEBUG = "debug"
+    DOCS = "docs"
+    RESEARCH = "research"
+    REFACTOR = "refactor"
+    TEST = "test"
+
+
+@dataclass
+class IntentResult:
+    """Result of intent classification with confidence and debug signals."""
+
+    primary: IntentCategory
+    confidence: float  # 0.0–1.0
+    secondary: IntentCategory | None = None
+    signals: list[str] = field(default_factory=list)
+
+
+# Primary keywords (weight 3) and secondary keywords (weight 1) per category.
+_INTENT_KEYWORDS: dict[IntentCategory, tuple[list[str], list[str]]] = {
+    IntentCategory.CODE_GEN: (
+        # primary
+        ["implement", "create", "write", "build", "add", "scaffold", "generate"],
+        # secondary
+        ["function", "class", "endpoint", "feature", "module", "api", "component",
+         "make", "construct", "set up", "wire up"],
+    ),
+    IntentCategory.REVIEW: (
+        ["review", "audit", "inspect", "evaluate", "assess", "critique", "approve"],
+        ["check", "examine", "look at", "code review", "pr review", "pull request"],
+    ),
+    IntentCategory.ANALYSIS: (
+        ["analyze", "explain", "investigate", "understand", "trace", "profile"],
+        ["why does", "how does", "what causes", "root cause", "deep dive",
+         "break down", "walk through"],
+    ),
+    IntentCategory.DEBUG: (
+        ["fix", "debug", "troubleshoot", "diagnose"],
+        ["bug", "error", "crash", "broken", "failing", "not working",
+         "issue", "exception", "stack trace", "segfault"],
+    ),
+    IntentCategory.DOCS: (
+        ["document", "readme", "docstring", "changelog", "api docs", "wiki"],
+        ["comment", "jsdoc", "typedoc", "description", "annotation",
+         "documentation"],
+    ),
+    IntentCategory.RESEARCH: (
+        ["research", "compare", "explore", "benchmark"],
+        ["alternatives", "options", "pros and cons", "trade-off", "trade off",
+         "survey", "landscape", "evaluation", "spike"],
+    ),
+    IntentCategory.REFACTOR: (
+        ["refactor", "restructure", "reorganize", "deduplicate"],
+        ["clean up", "simplify", "extract", "optimize", "consolidate",
+         "rename", "move", "split"],
+    ),
+    IntentCategory.TEST: (
+        ["unit test", "integration test", "test plan", "test suite"],
+        ["test", "spec", "coverage", "assertion", "mock", "fixture",
+         "expect", "pytest", "jest", "vitest"],
+    ),
+}
+
+# Map IntentCategory → legacy benchmark category strings for backward compat.
+_INTENT_TO_BENCHMARK_CATEGORY: dict[IntentCategory, str] = {
+    IntentCategory.CODE_GEN: "generation",
+    IntentCategory.REVIEW: "analysis",
+    IntentCategory.ANALYSIS: "reasoning",
+    IntentCategory.DEBUG: "analysis",
+    IntentCategory.DOCS: "language",
+    IntentCategory.RESEARCH: "reasoning",
+    IntentCategory.REFACTOR: "generation",
+    IntentCategory.TEST: "generation",
+}
+
+_PRIMARY_WEIGHT = 3
+_SECONDARY_WEIGHT = 1
+
+
+def classify_intent(task: str) -> IntentResult:
+    """Classify a task into a structured intent category.
+
+    Uses weighted keyword matching: primary keywords score higher than
+    secondary keywords. Returns the best-matching category with a
+    confidence score based on score margin over the runner-up.
+    """
+    task_lower = task.lower()
+    scores: dict[IntentCategory, float] = {}
+    matched_signals: dict[IntentCategory, list[str]] = {}
+
+    for cat, (primary_kws, secondary_kws) in _INTENT_KEYWORDS.items():
+        total = 0.0
+        signals: list[str] = []
+
+        for kw in primary_kws:
+            if kw in task_lower:
+                total += _PRIMARY_WEIGHT
+                signals.append(f"+{kw}")
+
+        for kw in secondary_kws:
+            if kw in task_lower:
+                total += _SECONDARY_WEIGHT
+                signals.append(kw)
+
+        if total > 0:
+            scores[cat] = total
+            matched_signals[cat] = signals
+
+    if not scores:
+        # No matches — default to CODE_GEN with zero confidence
+        return IntentResult(
+            primary=IntentCategory.CODE_GEN,
+            confidence=0.0,
+            signals=[],
+        )
+
+    # Sort categories by score descending
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    best_cat, best_score = ranked[0]
+    runner_up_score = ranked[1][1] if len(ranked) > 1 else 0.0
+
+    # Confidence: how dominant is the top score?
+    # - If only one category matched, high confidence
+    # - If top score >> runner-up, high confidence
+    # - If scores are close, lower confidence
+    if runner_up_score == 0:
+        confidence = min(1.0, best_score / (_PRIMARY_WEIGHT * 2))
+    else:
+        margin = (best_score - runner_up_score) / best_score
+        base_confidence = min(1.0, best_score / (_PRIMARY_WEIGHT * 2))
+        confidence = base_confidence * (0.5 + 0.5 * margin)
+
+    confidence = round(confidence, 3)
+
+    secondary = ranked[1][0] if len(ranked) > 1 else None
+
+    return IntentResult(
+        primary=best_cat,
+        confidence=confidence,
+        secondary=secondary,
+        signals=matched_signals.get(best_cat, []),
+    )
+
 
 # Weight for combining keyword, history, benchmark, and feedback scores
 KEYWORD_WEIGHT = 0.35
@@ -276,20 +430,18 @@ def history_scores(
 
 
 def classify_task(task: str) -> str:
-    """Classify a task into a benchmark category.
+    """Classify a task into a benchmark category (backward-compatible wrapper).
 
     Returns one of: "analysis", "generation", "reasoning", "language", or ""
     (empty if no clear match).
-    """
-    scores: dict[str, int] = {}
-    for category, pattern in _CATEGORY_PATTERNS.items():
-        matches = len(pattern.findall(task))
-        if matches > 0:
-            scores[category] = matches
 
-    if not scores:
+    Internally uses ``classify_intent()`` and maps the result to legacy
+    benchmark category strings.
+    """
+    intent = classify_intent(task)
+    if intent.confidence == 0.0:
         return ""
-    return max(scores, key=scores.get)  # type: ignore[arg-type]
+    return _INTENT_TO_BENCHMARK_CATEGORY.get(intent.primary, "")
 
 
 def benchmark_scores(
@@ -385,8 +537,9 @@ def smart_route(
             candidates[0]: ProviderScore(provider=candidates[0], composite=1.0)
         }
 
-    # 0. Task classification
-    category = classify_task(task)
+    # 0. Task classification (structured intent)
+    intent = classify_intent(task)
+    category = _INTENT_TO_BENCHMARK_CATEGORY.get(intent.primary, "")
 
     # 1. Keyword scoring
     kw_scores = keyword_scores(task, candidates)

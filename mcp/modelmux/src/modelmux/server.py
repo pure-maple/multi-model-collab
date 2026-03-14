@@ -51,7 +51,7 @@ from modelmux.orchestrate import (
 )
 from modelmux.orchestrate_store import OrchestrateStore
 from modelmux.policy import check_policy, load_policy
-from modelmux.routing import smart_route
+from modelmux.routing import classify_intent, smart_route
 from modelmux.status import DispatchStatus, list_active, remove_status, write_status
 from modelmux.workflow import (
     BUILTIN_WORKFLOWS,
@@ -782,6 +782,14 @@ async def mux_dispatch(
             error=result.error,
         )
     )
+
+    # Intent classification for analytics
+    intent = classify_intent(task)
+    result_dict["intent"] = {
+        "category": intent.primary.value,
+        "confidence": intent.confidence,
+        "signals": intent.signals[:5],
+    }
 
     # History (full result)
     log_result(result_dict, task=task, source="dispatch")

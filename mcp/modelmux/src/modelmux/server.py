@@ -691,6 +691,7 @@ async def mux_dispatch(
         task_summary=task[:200],
         status="running",
         started_at=start_time,
+        async_mode=async_mode,
     )
     write_status(dispatch_status)
 
@@ -709,138 +710,309 @@ async def mux_dispatch(
             _last_status_write[0] = now
             write_status(dispatch_status)
 
-    await ctx.info(f"Dispatching to {actual_provider}...")
+    async def _run_dispatch_core() -> str:
+        """Core dispatch logic: run adapter, retry, failover, log."""
+        nonlocal actual_provider, adapter
 
-    # Clamp max_retries to [1, 5]
-    effective_retries = max(1, min(max_retries, 5))
+        # Clamp max_retries to [1, 5]
+        effective_retries = max(1, min(max_retries, 5))
 
-    result = await adapter.run(
-        prompt=task,
-        workdir=resolved_workdir,
-        sandbox=sandbox,
-        session_id=session_id,
-        timeout=timeout,
-        extra_args=extra_args if extra_args else None,
-        env_overrides=env_overrides if env_overrides else None,
-        on_progress=on_progress,
-    )
-
-    # Same-provider retry with exponential backoff
-    should_retry = (
-        result.status in ("error", "timeout")
-        and effective_retries > 1
-        and not session_id
-    )
-    if should_retry:
-        for attempt in range(2, effective_retries + 1):
-            backoff = 2 ** (attempt - 1)  # 2s, 4s, 8s, 16s
-            await ctx.info(
-                f"Attempt {attempt}/{effective_retries}: "
-                f"retrying {actual_provider} in {backoff}s..."
-            )
-            await asyncio.sleep(backoff)
-
-            dispatch_status.status = "running"
-            dispatch_status.output_preview = f"retry #{attempt}"
-            write_status(dispatch_status)
-
-            result = await adapter.run(
-                prompt=task,
-                workdir=resolved_workdir,
-                sandbox=sandbox,
-                session_id=session_id,
-                timeout=timeout,
-                extra_args=extra_args if extra_args else None,
-                env_overrides=env_overrides if env_overrides else None,
-                on_progress=on_progress,
-            )
-            if result.status not in ("error", "timeout"):
-                break
-
-    # Execution failover to other providers
-    failover_from = ""
-    can_failover = failover and result.status == "error" and not session_id
-    if can_failover:
-        candidates = _get_fallback_candidates(actual_provider, excluded)
-        for fb_name in candidates:
-            fb_adapter = _get_adapter(fb_name)
-            if not fb_adapter.check_available():
-                continue
-
-            await ctx.info(
-                f"{actual_provider} failed ({result.error}), retrying with {fb_name}..."
-            )
-            failover_from = actual_provider
-
-            # Update status for failover
-            dispatch_status.provider = fb_name
-            dispatch_status.failover_from = actual_provider
-            dispatch_status.status = "running"
-            write_status(dispatch_status)
-
-            fb_extra, fb_env = _build_extra_args(
-                fb_name, model, profile, reasoning_effort, active_prof
-            )
-            fb_result = await fb_adapter.run(
-                prompt=task,
-                workdir=resolved_workdir,
-                sandbox=sandbox,
-                session_id="",
-                timeout=timeout,
-                extra_args=fb_extra if fb_extra else None,
-                env_overrides=fb_env if fb_env else None,
-                on_progress=on_progress,
-            )
-            if fb_result.status != "error":
-                actual_provider = fb_name
-                adapter = fb_adapter
-                result = fb_result
-                break
-
-    # Clean up status file (dispatch complete)
-    remove_status(run_id)
-
-    result_dict = result.to_dict()
-    if provider == "auto":
-        result_dict["routed_from"] = "auto"
-        if caller.provider:
-            result_dict["caller_excluded"] = caller.provider
-    if failover_from:
-        result_dict["failover_from"] = failover_from
-    if profile_name != "default" and active_prof:
-        result_dict["profile"] = profile_name
-
-    # Audit logging
-    log_dispatch(
-        AuditEntry(
-            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            provider=actual_provider,
-            task_summary=task[:200],
-            status=result.status,
-            duration_seconds=result.duration_seconds,
-            caller=caller.client_name,
-            caller_platform=caller.platform,
-            routed_from="auto" if provider == "auto" else "",
-            profile=profile_name if profile_name != "default" else "",
+        result = await adapter.run(
+            prompt=task,
+            workdir=resolved_workdir,
             sandbox=sandbox,
-            model=extra_args.get("model", ""),
-            session_id=result.session_id,
-            error=result.error,
+            session_id=session_id,
+            timeout=timeout,
+            extra_args=extra_args if extra_args else None,
+            env_overrides=env_overrides if env_overrides else None,
+            on_progress=on_progress,
         )
-    )
 
-    # Intent classification for analytics
-    intent = classify_intent(task)
-    result_dict["intent"] = {
-        "category": intent.primary.value,
-        "confidence": intent.confidence,
-        "signals": intent.signals[:5],
+        # Same-provider retry with exponential backoff
+        should_retry = (
+            result.status in ("error", "timeout")
+            and effective_retries > 1
+            and not session_id
+        )
+        if should_retry:
+            for attempt in range(2, effective_retries + 1):
+                backoff = 2 ** (attempt - 1)  # 2s, 4s, 8s, 16s
+                if not async_mode:
+                    await ctx.info(
+                        f"Attempt {attempt}/{effective_retries}: "
+                        f"retrying {actual_provider} in {backoff}s..."
+                    )
+                await asyncio.sleep(backoff)
+
+                dispatch_status.status = "running"
+                dispatch_status.output_preview = f"retry #{attempt}"
+                write_status(dispatch_status)
+
+                result = await adapter.run(
+                    prompt=task,
+                    workdir=resolved_workdir,
+                    sandbox=sandbox,
+                    session_id=session_id,
+                    timeout=timeout,
+                    extra_args=extra_args if extra_args else None,
+                    env_overrides=env_overrides if env_overrides else None,
+                    on_progress=on_progress,
+                )
+                if result.status not in ("error", "timeout"):
+                    break
+
+        # Execution failover to other providers
+        failover_from = ""
+        can_failover = failover and result.status == "error" and not session_id
+        if can_failover:
+            candidates = _get_fallback_candidates(actual_provider, excluded)
+            for fb_name in candidates:
+                fb_adapter = _get_adapter(fb_name)
+                if not fb_adapter.check_available():
+                    continue
+
+                if not async_mode:
+                    await ctx.info(
+                        f"{actual_provider} failed ({result.error}), "
+                        f"retrying with {fb_name}..."
+                    )
+                failover_from = actual_provider
+
+                # Update status for failover
+                dispatch_status.provider = fb_name
+                dispatch_status.failover_from = actual_provider
+                dispatch_status.status = "running"
+                write_status(dispatch_status)
+
+                fb_extra, fb_env = _build_extra_args(
+                    fb_name, model, profile, reasoning_effort, active_prof
+                )
+                fb_result = await fb_adapter.run(
+                    prompt=task,
+                    workdir=resolved_workdir,
+                    sandbox=sandbox,
+                    session_id="",
+                    timeout=timeout,
+                    extra_args=fb_extra if fb_extra else None,
+                    env_overrides=fb_env if fb_env else None,
+                    on_progress=on_progress,
+                )
+                if fb_result.status != "error":
+                    actual_provider = fb_name
+                    adapter = fb_adapter
+                    result = fb_result
+                    break
+
+        # Clean up status file (sync dispatch only; async keeps it)
+        if not async_mode:
+            remove_status(run_id)
+
+        result_dict = result.to_dict()
+        if provider == "auto":
+            result_dict["routed_from"] = "auto"
+            if caller.provider:
+                result_dict["caller_excluded"] = caller.provider
+        if failover_from:
+            result_dict["failover_from"] = failover_from
+        if profile_name != "default" and active_prof:
+            result_dict["profile"] = profile_name
+
+        # Audit logging
+        log_dispatch(
+            AuditEntry(
+                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                provider=actual_provider,
+                task_summary=task[:200],
+                status=result.status,
+                duration_seconds=result.duration_seconds,
+                caller=caller.client_name,
+                caller_platform=caller.platform,
+                routed_from="auto" if provider == "auto" else "",
+                profile=profile_name if profile_name != "default" else "",
+                sandbox=sandbox,
+                model=extra_args.get("model", ""),
+                session_id=result.session_id,
+                error=result.error,
+            )
+        )
+
+        # Intent classification for analytics
+        intent = classify_intent(task)
+        result_dict["intent"] = {
+            "category": intent.primary.value,
+            "confidence": intent.confidence,
+            "signals": intent.signals[:5],
+        }
+
+        # History (full result)
+        log_result(result_dict, task=task, source="dispatch")
+
+        return json.dumps(result_dict, indent=2, ensure_ascii=False)
+
+    # ── Async mode: run in background and return immediately ──
+    if async_mode:
+
+        async def _run_async_wrapper() -> None:
+            """Background wrapper: runs dispatch, stores result in status."""
+            try:
+                result_json = await _run_dispatch_core()
+                result_dict = json.loads(result_json)
+                dispatch_status.status = result_dict.get("status", "success")
+                dispatch_status.elapsed_seconds = round(
+                    time.time() - start_time, 1
+                )
+                dispatch_status.result = result_dict
+                write_status(dispatch_status)
+            except asyncio.CancelledError:
+                dispatch_status.status = "cancelled"
+                dispatch_status.elapsed_seconds = round(
+                    time.time() - start_time, 1
+                )
+                write_status(dispatch_status)
+            except Exception as exc:
+                dispatch_status.status = "error"
+                dispatch_status.error = str(exc)[:500]
+                dispatch_status.elapsed_seconds = round(
+                    time.time() - start_time, 1
+                )
+                write_status(dispatch_status)
+            finally:
+                _async_tasks.pop(run_id, None)
+
+        bg_task = asyncio.create_task(_run_async_wrapper())
+        _async_tasks[run_id] = bg_task
+
+        return json.dumps(
+            {
+                "status": "accepted",
+                "run_id": run_id,
+                "provider": actual_provider,
+                "async_mode": True,
+            },
+            indent=2,
+        )
+
+    # ── Synchronous mode (default) ──
+    await ctx.info(f"Dispatching to {actual_provider}...")
+    return await _run_dispatch_core()
+
+
+@mcp.tool()
+async def mux_task_status(
+    run_id: str,
+    include_output: bool = False,
+) -> str:
+    """Query the status of an async dispatch task.
+
+    Args:
+        run_id: The run_id returned by mux_dispatch with async_mode=True.
+        include_output: Include the full output in the response when the
+            task has completed (default False, returns metadata only).
+    """
+    status = read_status(run_id)
+    if status is None:
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": "not_found",
+                "error": f"No task found with run_id '{run_id}'.",
+            },
+            indent=2,
+        )
+
+    response: dict = {
+        "run_id": status.run_id,
+        "provider": status.provider,
+        "status": status.status,
+        "elapsed_seconds": status.elapsed_seconds,
+        "task_summary": status.task_summary,
     }
 
-    # History (full result)
-    log_result(result_dict, task=task, source="dispatch")
+    if status.error:
+        response["error"] = status.error
+    if status.failover_from:
+        response["failover_from"] = status.failover_from
 
-    return json.dumps(result_dict, indent=2, ensure_ascii=False)
+    # Task still running — include progress preview
+    if status.status == "running":
+        response["output_preview"] = status.output_preview
+        response["output_lines"] = status.output_lines
+
+    # Task completed — optionally include full result
+    if status.result is not None:
+        if include_output:
+            response["result"] = status.result
+        else:
+            # Return metadata without full output
+            response["result_status"] = status.result.get("status", "")
+            response["result_provider"] = status.result.get("provider", "")
+            if "duration_seconds" in status.result:
+                response["duration_seconds"] = status.result["duration_seconds"]
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+async def mux_task_cancel(
+    run_id: str,
+) -> str:
+    """Cancel a running async dispatch task.
+
+    Args:
+        run_id: The run_id of the async task to cancel.
+    """
+    # Check if task exists in memory
+    bg_task = _async_tasks.get(run_id)
+    if bg_task is None:
+        # Check if status file exists (task may have already completed)
+        status = read_status(run_id)
+        if status is None:
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "status": "not_found",
+                    "error": f"No task found with run_id '{run_id}'.",
+                },
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "run_id": run_id,
+                "status": status.status,
+                "message": (
+                    "Task already completed."
+                    if status.status != "running"
+                    else "Task reference lost (server may have restarted)."
+                ),
+            },
+            indent=2,
+        )
+
+    # Cancel the asyncio task
+    bg_task.cancel()
+    # Wait for cancellation to propagate
+    try:
+        await bg_task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    # Ensure cleanup even if the finally block didn't run
+    _async_tasks.pop(run_id, None)
+
+    # Update status file to cancelled
+    status = read_status(run_id)
+    if status is not None and status.status == "running":
+        status.status = "cancelled"
+        write_status(status)
+
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "status": "cancelled",
+            "message": "Task cancellation requested.",
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()

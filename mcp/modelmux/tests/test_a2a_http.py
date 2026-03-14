@@ -65,7 +65,7 @@ def test_agent_card_endpoint():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["name"] == "modelmux"
+    assert card["name"] == "Plexus"
     assert card["protocolVersion"] == "0.3.0"
     assert "skills" in card
     assert "capabilities" in card
@@ -575,7 +575,7 @@ def test_auth_agent_card_always_open():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["name"] == "modelmux"
+    assert card["name"] == "Plexus"
     assert "bearer" in card.get("authSchemes", [])
 
 

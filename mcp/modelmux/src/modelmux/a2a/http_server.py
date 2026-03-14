@@ -6,7 +6,7 @@ Implements the Agent-to-Agent protocol v0.3.0 transport layer:
   - POST / (sendSubscribe)        → SSE streaming
 
 This server wraps the same CollaborationEngine used by the MCP tool,
-allowing any A2A-compatible client to interact with modelmux agents.
+allowing any A2A-compatible client to interact with Plexus agents.
 """
 
 from __future__ import annotations
@@ -230,7 +230,7 @@ class A2AServer:
         auth_schemes = ["bearer"] if self.auth_token else []
 
         card = AgentCard(
-            name="modelmux",
+            name="Plexus",
             description=(
                 "Multi-model collaboration orchestrator. "
                 "Routes tasks to and coordinates between AI coding agents "

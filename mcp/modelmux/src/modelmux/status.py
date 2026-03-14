@@ -34,6 +34,7 @@ class DispatchStatus:
     error: str = ""
     failover_from: str = ""
     async_mode: bool = False
+    paused: bool = False
     result: dict | None = None
 
 

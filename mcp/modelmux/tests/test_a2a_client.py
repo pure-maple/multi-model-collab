@@ -154,7 +154,7 @@ async def test_client_discover():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
         resp = await http.get("/.well-known/agent.json")
         card = resp.json()
-        assert card["name"] == "modelmux"
+        assert card["name"] == "Plexus"
         assert "skills" in card
 
 

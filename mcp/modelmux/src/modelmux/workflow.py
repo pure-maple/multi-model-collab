@@ -1,6 +1,7 @@
 """Workflow template engine for modelmux.
 
 Defines multi-step dispatch pipelines that chain multiple providers.
+Supports persistent step-file state for recoverable workflows (BMAD-inspired).
 
 Workflow definitions live in config (profiles.toml):
 
@@ -20,9 +21,53 @@ Workflow definitions live in config (profiles.toml):
 
 from __future__ import annotations
 
+import json
+import logging
 import re
-from dataclasses import dataclass, field
+import time
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Default persistence directory
+WORKFLOW_STATE_DIR = Path.home() / ".config" / "modelmux" / "workflows"
+
+
+class StepState(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class PersistentStep:
+    """Tracks execution state for a single workflow step."""
+
+    name: str
+    state: StepState = StepState.PENDING
+    result: dict | None = None
+    error: str | None = None
+    started_at: float = 0.0
+    completed_at: float = 0.0
+    retry_count: int = 0
+
+
+@dataclass
+class WorkflowState:
+    """Full persistent state for a workflow execution."""
+
+    workflow_id: str
+    workflow_name: str
+    steps: list[PersistentStep]
+    current_step: int = 0
+    status: str = "pending"  # pending/running/completed/failed/paused
+    created_at: float = 0.0
+    updated_at: float = 0.0
 
 
 @dataclass
@@ -151,3 +196,132 @@ BUILTIN_WORKFLOWS: dict[str, Workflow] = {
         ],
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Persistence helpers
+# ---------------------------------------------------------------------------
+
+
+def _step_to_dict(step: PersistentStep) -> dict:
+    """Serialize a PersistentStep to a JSON-safe dict."""
+    d = asdict(step)
+    d["state"] = step.state.value
+    return d
+
+
+def _step_from_dict(d: dict) -> PersistentStep:
+    """Deserialize a PersistentStep from a dict."""
+    return PersistentStep(
+        name=d["name"],
+        state=StepState(d.get("state", "pending")),
+        result=d.get("result"),
+        error=d.get("error"),
+        started_at=d.get("started_at", 0.0),
+        completed_at=d.get("completed_at", 0.0),
+        retry_count=d.get("retry_count", 0),
+    )
+
+
+def _state_to_dict(state: WorkflowState) -> dict:
+    """Serialize a WorkflowState to a JSON-safe dict."""
+    return {
+        "workflow_id": state.workflow_id,
+        "workflow_name": state.workflow_name,
+        "steps": [_step_to_dict(s) for s in state.steps],
+        "current_step": state.current_step,
+        "status": state.status,
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
+    }
+
+
+def _state_from_dict(d: dict) -> WorkflowState:
+    """Deserialize a WorkflowState from a dict."""
+    return WorkflowState(
+        workflow_id=d["workflow_id"],
+        workflow_name=d["workflow_name"],
+        steps=[_step_from_dict(s) for s in d.get("steps", [])],
+        current_step=d.get("current_step", 0),
+        status=d.get("status", "pending"),
+        created_at=d.get("created_at", 0.0),
+        updated_at=d.get("updated_at", 0.0),
+    )
+
+
+def save_workflow_state(
+    state: WorkflowState,
+    state_dir: Path | None = None,
+) -> Path:
+    """Persist a WorkflowState to disk as JSON.
+
+    Returns the path of the written file.
+    """
+    base = state_dir or WORKFLOW_STATE_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    path = base / f"{state.workflow_id}.json"
+    state.updated_at = time.time()
+    path.write_text(json.dumps(_state_to_dict(state), indent=2, ensure_ascii=False))
+    return path
+
+
+def load_workflow_state(
+    workflow_id: str,
+    state_dir: Path | None = None,
+) -> WorkflowState | None:
+    """Load a persisted WorkflowState from disk, or None if not found."""
+    base = state_dir or WORKFLOW_STATE_DIR
+    path = base / f"{workflow_id}.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        return _state_from_dict(data)
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.warning("Failed to load workflow state %s: %s", path, exc)
+        return None
+
+
+def list_workflow_states(
+    state_dir: Path | None = None,
+) -> list[WorkflowState]:
+    """List all persisted workflow states."""
+    base = state_dir or WORKFLOW_STATE_DIR
+    if not base.exists():
+        return []
+    states: list[WorkflowState] = []
+    for path in sorted(base.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+            states.append(_state_from_dict(data))
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.warning("Skipping invalid workflow state %s: %s", path, exc)
+    return states
+
+
+def create_workflow_state(
+    workflow_id: str,
+    workflow: Workflow,
+) -> WorkflowState:
+    """Create a fresh WorkflowState from a Workflow definition."""
+    now = time.time()
+    return WorkflowState(
+        workflow_id=workflow_id,
+        workflow_name=workflow.name,
+        steps=[PersistentStep(name=s.name) for s in workflow.steps],
+        current_step=0,
+        status="pending",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def find_resume_step(state: WorkflowState) -> int:
+    """Find the index of the first non-completed step to resume from.
+
+    Returns -1 if all steps are completed.
+    """
+    for i, step in enumerate(state.steps):
+        if step.state not in (StepState.COMPLETED, StepState.SKIPPED):
+            return i
+    return -1

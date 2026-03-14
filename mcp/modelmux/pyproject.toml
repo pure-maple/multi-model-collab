@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "modelmux"
 version = "0.29.0"
-description = "Model multiplexer — unified MCP server for cross-platform multi-model AI collaboration"
+description = "Plexus — unified MCP server for cross-platform multi-model AI collaboration (powered by modelmux)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -18,6 +18,7 @@ keywords = [
     "collaboration",
     "multi-model",
     "modelmux",
+    "plexus",
     "multiplexer",
     "codex",
     "gemini",

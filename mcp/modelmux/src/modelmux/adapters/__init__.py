@@ -8,6 +8,7 @@ from modelmux.adapters.dashscope import DashScopeAdapter
 from modelmux.adapters.gemini import GeminiAdapter
 from modelmux.adapters.generic import GenericAdapter
 from modelmux.adapters.ollama import OllamaAdapter
+from modelmux.adapters.opencode import OpencodeAdapter
 
 ADAPTERS: dict[str, type[BaseAdapter] | BaseAdapter] = {
     "codex": CodexAdapter,
@@ -15,6 +16,7 @@ ADAPTERS: dict[str, type[BaseAdapter] | BaseAdapter] = {
     "claude": ClaudeAdapter,
     "ollama": OllamaAdapter,
     "dashscope": DashScopeAdapter,
+    "opencode": OpencodeAdapter,
 }
 
 # Stores instantiated generic/remote adapters (keyed by provider name)
@@ -120,6 +122,7 @@ __all__ = [
     "DashScopeAdapter",
     "GenericAdapter",
     "A2ARemoteAdapter",
+    "OpencodeAdapter",
     "ADAPTERS",
     "get_all_adapters",
     "register_custom_provider",

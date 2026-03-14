@@ -2,7 +2,7 @@
 
 import json
 
-from modelmux.decompose import (
+from vyane.decompose import (
     DecompositionPlan,
     Subtask,
     build_merge_prompt,

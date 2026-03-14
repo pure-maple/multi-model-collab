@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from modelmux.a2a.client import A2AClient, A2AClientConfig
-from modelmux.a2a.http_server import A2AServer
-from modelmux.adapters.a2a_remote import A2ARemoteAdapter
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.a2a.client import A2AClient, A2AClientConfig
+from vyane.a2a.http_server import A2AServer
+from vyane.adapters.a2a_remote import A2ARemoteAdapter
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 # --- Fake adapter for the A2A server ---
 
@@ -154,7 +154,7 @@ async def test_client_discover():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
         resp = await http.get("/.well-known/agent.json")
         card = resp.json()
-        assert card["name"] == "Plexus"
+        assert card["name"] == "Vyane"
         assert "skills" in card
 
 
@@ -259,7 +259,7 @@ class TestA2ARemoteAdapter:
 
 class TestA2AAgentRegistration:
     def test_register_a2a_agent(self):
-        from modelmux.adapters import (
+        from vyane.adapters import (
             _custom_adapters,
             register_a2a_agent,
         )
@@ -278,7 +278,7 @@ class TestA2AAgentRegistration:
         del _custom_adapters["test-agent"]
 
     def test_load_a2a_agents_from_config(self):
-        from modelmux.adapters import (
+        from vyane.adapters import (
             _custom_adapters,
             load_custom_providers,
         )
@@ -306,7 +306,7 @@ class TestA2AAgentRegistration:
         del _custom_adapters["local-agent"]
 
     def test_load_skips_empty_url(self):
-        from modelmux.adapters import (
+        from vyane.adapters import (
             _custom_adapters,
             load_custom_providers,
         )
@@ -316,7 +316,7 @@ class TestA2AAgentRegistration:
         assert len(_custom_adapters) == before
 
     def test_load_skips_invalid_data(self):
-        from modelmux.adapters import (
+        from vyane.adapters import (
             _custom_adapters,
             load_custom_providers,
         )
@@ -417,7 +417,7 @@ class TestA2AClientConfig:
 
 class TestA2AResponse:
     def test_defaults(self):
-        from modelmux.a2a.client import A2AResponse
+        from vyane.a2a.client import A2AResponse
 
         resp = A2AResponse()
         assert resp.task_id == ""
@@ -488,7 +488,7 @@ class TestA2AClientDiscover:
         mock_resp = _mock_httpx_response(card)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://remote:8080"))
             result = await client.discover()
 
@@ -501,7 +501,7 @@ class TestA2AClientDiscover:
         mock_resp = _mock_httpx_response(card)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(
                 A2AClientConfig(url="http://remote:8080", token="tok")
             )
@@ -532,7 +532,7 @@ class TestA2AClientSend:
         mock_resp = _mock_httpx_response(body)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.send("do something", pattern="review")
 
@@ -547,7 +547,7 @@ class TestA2AClientSend:
         mock_resp = _mock_httpx_response(body)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             await client.send(
                 "task",
@@ -569,7 +569,7 @@ class TestA2AClientSend:
         mock_resp = _mock_httpx_response(body)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.send("task")
 
@@ -590,7 +590,7 @@ class TestA2AClientGet:
         mock_resp = _mock_httpx_response(body)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.get("task-123")
 
@@ -616,7 +616,7 @@ class TestA2AClientCancel:
         mock_resp = _mock_httpx_response(body)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.cancel("task-456")
 
@@ -633,7 +633,7 @@ class TestA2AClientCheckAvailable:
         mock_resp = _mock_httpx_response({}, status_code=200)
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.check_available()
 
@@ -645,7 +645,7 @@ class TestA2AClientCheckAvailable:
         mock_resp.status_code = 503
         mock_http = _mock_async_client(mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.check_available()
 
@@ -658,7 +658,7 @@ class TestA2AClientCheckAvailable:
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_http.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.check_available()
 
@@ -671,7 +671,7 @@ class TestA2AClientCheckAvailable:
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_http.get = AsyncMock(side_effect=OSError("network down"))
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             result = await client.check_available()
 
@@ -704,7 +704,7 @@ class TestA2AClientSendSubscribe:
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_http.stream = MagicMock(return_value=mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             events = []
             async for event in client.send_subscribe("test task"):
@@ -738,7 +738,7 @@ class TestA2AClientSendSubscribe:
         mock_http.__aexit__ = AsyncMock(return_value=False)
         mock_http.stream = MagicMock(return_value=mock_resp)
 
-        with patch("modelmux.a2a.client.httpx.AsyncClient", return_value=mock_http):
+        with patch("vyane.a2a.client.httpx.AsyncClient", return_value=mock_http):
             client = A2AClient(A2AClientConfig(url="http://test"))
             events = []
             async for event in client.send_subscribe("task"):

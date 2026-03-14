@@ -2,7 +2,7 @@
 
 import pytest
 
-from modelmux.compare import _jaccard, _tokenize, compare_results
+from vyane.compare import _jaccard, _tokenize, compare_results
 
 
 class TestTokenize:

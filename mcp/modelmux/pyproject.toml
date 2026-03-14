@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "modelmux"
+name = "vyane"
 version = "0.29.0"
-description = "Plexus — unified MCP server for cross-platform multi-model AI collaboration (powered by modelmux)"
+description = "Vyane — unified MCP server for cross-platform multi-model AI collaboration"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -17,8 +17,8 @@ keywords = [
     "ai",
     "collaboration",
     "multi-model",
+    "vyane",
     "modelmux",
-    "plexus",
     "multiplexer",
     "codex",
     "gemini",
@@ -60,10 +60,12 @@ Issues = "https://github.com/pure-maple/modelmux/issues"
 Documentation = "https://github.com/pure-maple/modelmux#readme"
 
 [project.scripts]
-modelmux = "modelmux.cli:main"
+vyane = "vyane.cli:main"
+yg = "vyane.cli:main"
+modelmux = "vyane.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/modelmux"]
+packages = ["src/vyane"]
 
 [tool.ruff]
 target-version = "py310"
@@ -73,4 +75,4 @@ src = ["src"]
 select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/modelmux/dashboard.py" = ["E501"]
+"src/vyane/dashboard.py" = ["E501"]

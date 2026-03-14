@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.orchestrate_store import OrchestrateStore
+from vyane.orchestrate_store import OrchestrateStore
 
 
 class FakeRequestContext:
@@ -30,12 +30,12 @@ class FakeContext:
 class TestMuxOrchestrate:
     @pytest.mark.asyncio
     async def test_plan_assign_status_review_merge_flow(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             planned = json.loads(
                 await mux_orchestrate(
                     action="plan", task="write release notes", ctx=ctx
@@ -74,12 +74,12 @@ class TestMuxOrchestrate:
 
     @pytest.mark.asyncio
     async def test_status_summary_lists_tasks(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             await mux_orchestrate(action="plan", task="implement feature", ctx=ctx)
             await mux_orchestrate(action="plan", task="debug flaky test", ctx=ctx)
 
@@ -93,12 +93,12 @@ class TestMuxOrchestrate:
 
     @pytest.mark.asyncio
     async def test_plan_normalizes_task_id_before_duplicate_check(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             first = json.loads(
                 await mux_orchestrate(
                     action="plan",
@@ -122,12 +122,12 @@ class TestMuxOrchestrate:
 
     @pytest.mark.asyncio
     async def test_task_id_lookup_does_not_fallback_to_branch(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             planned = json.loads(
                 await mux_orchestrate(action="plan", task="implement feature", ctx=ctx)
             )
@@ -160,12 +160,12 @@ class TestMuxOrchestrate:
 
     @pytest.mark.asyncio
     async def test_task_id_and_branch_must_identify_the_same_task(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             first = json.loads(
                 await mux_orchestrate(action="plan", task="first task", ctx=ctx)
             )
@@ -204,24 +204,24 @@ class TestMuxOrchestrate:
 
     @pytest.mark.asyncio
     async def test_invalid_action_returns_error(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             result = json.loads(await mux_orchestrate(action="ship", ctx=ctx))
         assert result["status"] == "error"
         assert "Unknown action" in result["error"]
 
     @pytest.mark.asyncio
     async def test_missing_task_for_assign_returns_error(self, tmp_path):
-        from modelmux.server import mux_orchestrate
+        from vyane.server import mux_orchestrate
 
         store = OrchestrateStore(path=tmp_path / "orchestrate.jsonl")
         ctx = FakeContext()
 
-        with patch("modelmux.server._get_orchestrate_store", return_value=store):
+        with patch("vyane.server._get_orchestrate_store", return_value=store):
             result = json.loads(
                 await mux_orchestrate(
                     action="assign",

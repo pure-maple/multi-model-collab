@@ -23,9 +23,9 @@ class TestEngineSequentialConvergence:
     @pytest.mark.asyncio
     async def test_sequential_returns_turns(self):
         """_execute_round sequential should return turns, not empty list."""
-        from modelmux.a2a.engine import CollaborationEngine, EngineConfig
-        from modelmux.a2a.patterns import REVIEW_PATTERN
-        from modelmux.a2a.types import CollaborationTask, TaskState
+        from vyane.a2a.engine import CollaborationEngine, EngineConfig
+        from vyane.a2a.patterns import REVIEW_PATTERN
+        from vyane.a2a.types import CollaborationTask, TaskState
 
         # Mock adapter
         mock_adapter = MagicMock()
@@ -50,7 +50,7 @@ class TestEngineSequentialConvergence:
         )
         collab.transition(TaskState.WORKING)
 
-        from modelmux.a2a.context import CollaborationContext
+        from vyane.a2a.context import CollaborationContext
         ctx = CollaborationContext.from_task(collab)
         ctx.goal = "test"
 
@@ -75,8 +75,8 @@ class TestEngineSequentialConvergence:
     @pytest.mark.asyncio
     async def test_convergence_detected_in_sequential(self):
         """Full engine.run should detect convergence in sequential patterns."""
-        from modelmux.a2a.engine import CollaborationEngine, EngineConfig
-        from modelmux.a2a.types import TaskState
+        from vyane.a2a.engine import CollaborationEngine, EngineConfig
+        from vyane.a2a.types import TaskState
 
         mock_adapter = MagicMock()
         mock_result = MagicMock()
@@ -109,7 +109,7 @@ class TestGeneratorReturnValue:
 
     def test_return_value_captured(self):
         """The exit code from stream_subprocess generator should be captured."""
-        from modelmux.adapters.base import stream_subprocess
+        from vyane.adapters.base import stream_subprocess
 
         # We can't easily test with real subprocess, but verify the
         # while/next pattern captures StopIteration.value correctly
@@ -170,10 +170,10 @@ class TestHistoryMetadataOverride:
     """Bug 5: result_dict should not override metadata fields."""
 
     def test_ts_not_overridden(self, tmp_path):
-        from modelmux.history import log_result
+        from vyane.history import log_result
 
         history_file = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=history_file):
+        with patch("vyane.history._history_file", return_value=history_file):
             log_result({"ts": 9999999999, "provider": "test"}, task="hello")
 
         entry = json.loads(history_file.read_text().strip())
@@ -182,20 +182,20 @@ class TestHistoryMetadataOverride:
         assert entry["ts"] > time.time() - 10
 
     def test_source_not_overridden(self, tmp_path):
-        from modelmux.history import log_result
+        from vyane.history import log_result
 
         history_file = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=history_file):
+        with patch("vyane.history._history_file", return_value=history_file):
             log_result({"source": "hacked"}, task="hello", source="dispatch")
 
         entry = json.loads(history_file.read_text().strip())
         assert entry["source"] == "dispatch"
 
     def test_task_not_overridden(self, tmp_path):
-        from modelmux.history import log_result
+        from vyane.history import log_result
 
         history_file = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=history_file):
+        with patch("vyane.history._history_file", return_value=history_file):
             log_result({"task": "injected"}, task="real task")
 
         entry = json.loads(history_file.read_text().strip())
@@ -206,10 +206,10 @@ class TestAuditTimezone:
     """Bug 6: Naive timestamps should be treated as UTC."""
 
     def test_naive_timestamp_treated_as_utc(self, tmp_path):
-        from modelmux.audit import AuditEntry, read_recent
+        from vyane.audit import AuditEntry, read_recent
 
         audit_file = tmp_path / "audit.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=audit_file):
+        with patch("vyane.audit._audit_file", return_value=audit_file):
             # Write a naive ISO timestamp (no timezone info)
             now_utc = datetime.datetime.now(datetime.timezone.utc)
             naive_ts = now_utc.replace(tzinfo=None).isoformat()
@@ -222,10 +222,10 @@ class TestAuditTimezone:
         assert entries[0].provider == "test"
 
     def test_aware_timestamp_works(self, tmp_path):
-        from modelmux.audit import read_recent
+        from vyane.audit import read_recent
 
         audit_file = tmp_path / "audit.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=audit_file):
+        with patch("vyane.audit._audit_file", return_value=audit_file):
             ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
             entry = {"timestamp": ts, "provider": "test", "status": "success"}
             audit_file.write_text(json.dumps(entry) + "\n")
@@ -235,10 +235,10 @@ class TestAuditTimezone:
         assert len(entries) == 1
 
     def test_old_entry_filtered(self, tmp_path):
-        from modelmux.audit import read_recent
+        from vyane.audit import read_recent
 
         audit_file = tmp_path / "audit.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=audit_file):
+        with patch("vyane.audit._audit_file", return_value=audit_file):
             # Write an entry from 2 hours ago
             old = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=2)
             entry = {"timestamp": old.isoformat(), "provider": "test", "status": "success"}

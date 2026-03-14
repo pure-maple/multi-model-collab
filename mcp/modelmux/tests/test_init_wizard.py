@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.init_wizard import (
+from vyane.init_wizard import (
     PROVIDER_INFO,
     PROVIDERS,
     _generate_toml,
@@ -39,14 +39,14 @@ class TestDetectClis:
     """Test CLI/API detection."""
 
     def test_detects_available_binary(self):
-        with patch("modelmux.init_wizard.shutil.which") as mock_which:
+        with patch("vyane.init_wizard.shutil.which") as mock_which:
             mock_which.return_value = "/usr/bin/codex"
             with patch.dict("os.environ", {}, clear=True):
                 result = detect_clis()
             assert result["codex"] is True
 
     def test_detects_missing_binary(self):
-        with patch("modelmux.init_wizard.shutil.which", return_value=None):
+        with patch("vyane.init_wizard.shutil.which", return_value=None):
             with patch.dict("os.environ", {}, clear=True):
                 result = detect_clis()
             assert result["codex"] is False
@@ -55,7 +55,7 @@ class TestDetectClis:
             assert result["ollama"] is False
 
     def test_detects_dashscope_by_env(self):
-        with patch("modelmux.init_wizard.shutil.which", return_value=None):
+        with patch("vyane.init_wizard.shutil.which", return_value=None):
             with patch.dict(
                 "os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}, clear=True
             ):
@@ -63,7 +63,7 @@ class TestDetectClis:
             assert result["dashscope"] is True
 
     def test_dashscope_missing_without_env(self):
-        with patch("modelmux.init_wizard.shutil.which", return_value=None):
+        with patch("vyane.init_wizard.shutil.which", return_value=None):
             with patch.dict("os.environ", {}, clear=True):
                 result = detect_clis()
             assert result["dashscope"] is False
@@ -149,66 +149,66 @@ class TestGenerateToml:
 
 class TestHelperFunctions:
     def test_info_prints(self, capsys):
-        from modelmux.init_wizard import _info
+        from vyane.init_wizard import _info
 
         _info("test message")
         captured = capsys.readouterr()
         assert "test message" in captured.out
 
     def test_header_prints(self, capsys):
-        from modelmux.init_wizard import _header
+        from vyane.init_wizard import _header
 
         _header("Section Title")
         captured = capsys.readouterr()
         assert "Section Title" in captured.out
 
     def test_ask_with_default(self):
-        from modelmux.init_wizard import _ask
+        from vyane.init_wizard import _ask
 
         with patch("builtins.input", return_value=""):
             result = _ask("prompt", "default_val")
             assert result == "default_val"
 
     def test_ask_with_input(self):
-        from modelmux.init_wizard import _ask
+        from vyane.init_wizard import _ask
 
         with patch("builtins.input", return_value="custom"):
             result = _ask("prompt", "default_val")
             assert result == "custom"
 
     def test_ask_yn_default_yes(self):
-        from modelmux.init_wizard import _ask_yn
+        from vyane.init_wizard import _ask_yn
 
         with patch("builtins.input", return_value=""):
             assert _ask_yn("question", default=True) is True
 
     def test_ask_yn_default_no(self):
-        from modelmux.init_wizard import _ask_yn
+        from vyane.init_wizard import _ask_yn
 
         with patch("builtins.input", return_value=""):
             assert _ask_yn("question", default=False) is False
 
     def test_ask_yn_yes(self):
-        from modelmux.init_wizard import _ask_yn
+        from vyane.init_wizard import _ask_yn
 
         with patch("builtins.input", return_value="y"):
             assert _ask_yn("question", default=False) is True
 
     def test_ask_yn_no(self):
-        from modelmux.init_wizard import _ask_yn
+        from vyane.init_wizard import _ask_yn
 
         with patch("builtins.input", return_value="n"):
             assert _ask_yn("question", default=True) is False
 
     def test_ask_choice_by_name(self):
-        from modelmux.init_wizard import _ask_choice
+        from vyane.init_wizard import _ask_choice
 
         with patch("builtins.input", return_value="codex"):
             result = _ask_choice("pick", ["codex", "gemini"], "codex")
             assert result == "codex"
 
     def test_ask_choice_by_number(self):
-        from modelmux.init_wizard import _ask_choice
+        from vyane.init_wizard import _ask_choice
 
         with patch("builtins.input", return_value="2"):
             result = _ask_choice("pick", ["codex", "gemini"], "codex")
@@ -229,14 +229,14 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/codex"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/codex"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
         ):
             run_wizard(scope="user")
 
-        config_file = tmp_path / ".config" / "modelmux" / "profiles.toml"
+        config_file = tmp_path / ".config" / "vyane" / "profiles.toml"
         assert config_file.exists()
         content = config_file.read_text()
         assert 'default_provider = "codex"' in content
@@ -251,7 +251,7 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/codex"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/codex"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.cwd", return_value=tmp_path),
@@ -271,14 +271,14 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value=None),
+            patch("vyane.init_wizard.shutil.which", return_value=None),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
         ):
             run_wizard(scope="user")
 
-        config_file = tmp_path / ".config" / "modelmux" / "profiles.toml"
+        config_file = tmp_path / ".config" / "vyane" / "profiles.toml"
         assert config_file.exists()
 
     def test_with_routing_rules(self, tmp_path):
@@ -294,14 +294,14 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/mock"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/mock"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
         ):
             run_wizard(scope="user")
 
-        content = (tmp_path / ".config" / "modelmux" / "profiles.toml").read_text()
+        content = (tmp_path / ".config" / "vyane" / "profiles.toml").read_text()
         assert "[[routing.rules]]" in content
         assert '"frontend"' in content
 
@@ -318,14 +318,14 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/mock"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/mock"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
         ):
             run_wizard(scope="user")
 
-        policy_file = tmp_path / ".config" / "modelmux" / "policy.json"
+        policy_file = tmp_path / ".config" / "vyane" / "policy.json"
         assert policy_file.exists()
         policy = json_mod.loads(policy_file.read_text())
         assert policy["max_calls_per_hour"] == 100
@@ -333,7 +333,7 @@ class TestRunWizard:
 
     def test_overwrite_existing_yes(self, tmp_path):
         """Wizard overwrites existing config when user says yes."""
-        config_dir = tmp_path / ".config" / "modelmux"
+        config_dir = tmp_path / ".config" / "vyane"
         config_dir.mkdir(parents=True)
         existing = config_dir / "profiles.toml"
         existing.write_text("old content")
@@ -347,7 +347,7 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/mock"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/mock"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
@@ -358,7 +358,7 @@ class TestRunWizard:
 
     def test_overwrite_existing_no(self, tmp_path):
         """Wizard keeps existing config when user says no."""
-        config_dir = tmp_path / ".config" / "modelmux"
+        config_dir = tmp_path / ".config" / "vyane"
         config_dir.mkdir(parents=True)
         existing = config_dir / "profiles.toml"
         existing.write_text("old content")
@@ -372,7 +372,7 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/mock"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/mock"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
@@ -392,12 +392,12 @@ class TestRunWizard:
         ])
 
         with (
-            patch("modelmux.init_wizard.shutil.which", return_value="/usr/bin/mock"),
+            patch("vyane.init_wizard.shutil.which", return_value="/usr/bin/mock"),
             patch.dict("os.environ", {}, clear=True),
             patch("builtins.input", side_effect=lambda _: next(inputs)),
             patch("pathlib.Path.home", return_value=tmp_path),
         ):
             run_wizard(scope="auto")
 
-        config_file = tmp_path / ".config" / "modelmux" / "profiles.toml"
+        config_file = tmp_path / ".config" / "vyane" / "profiles.toml"
         assert config_file.exists()

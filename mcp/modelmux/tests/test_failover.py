@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, "src")
 
-from modelmux.adapters.base import AdapterResult
-from modelmux.server import _get_fallback_candidates, mux_dispatch
+from vyane.adapters.base import AdapterResult
+from vyane.server import _get_fallback_candidates, mux_dispatch
 
 
 def make_mock_ctx(client_name: str = "test-runner"):
@@ -72,15 +72,15 @@ def test_failover_on_execution_error():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available", return_value=True
+            "vyane.adapters.codex.CodexAdapter.check_available", return_value=True
         ),
         patch(
-            "modelmux.adapters.gemini.GeminiAdapter.check_available", return_value=True
+            "vyane.adapters.gemini.GeminiAdapter.check_available", return_value=True
         ),
         patch(
-            "modelmux.adapters.claude.ClaudeAdapter.check_available", return_value=False
+            "vyane.adapters.claude.ClaudeAdapter.check_available", return_value=False
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
     ):
         raw = asyncio.run(
             mux_dispatch(
@@ -118,9 +118,9 @@ def test_no_failover_when_disabled():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available", return_value=True
+            "vyane.adapters.codex.CodexAdapter.check_available", return_value=True
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
     ):
         raw = asyncio.run(
             mux_dispatch(
@@ -153,9 +153,9 @@ def test_no_failover_with_session_id():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available", return_value=True
+            "vyane.adapters.codex.CodexAdapter.check_available", return_value=True
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
     ):
         raw = asyncio.run(
             mux_dispatch(
@@ -198,10 +198,10 @@ def test_retry_same_provider_on_error():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available",
+            "vyane.adapters.codex.CodexAdapter.check_available",
             return_value=True,
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         raw = asyncio.run(
@@ -237,10 +237,10 @@ def test_retry_no_retry_when_max_retries_1():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available",
+            "vyane.adapters.codex.CodexAdapter.check_available",
             return_value=True,
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
     ):
         raw = asyncio.run(
             mux_dispatch(
@@ -280,18 +280,18 @@ def test_retry_then_failover():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available",
+            "vyane.adapters.codex.CodexAdapter.check_available",
             return_value=True,
         ),
         patch(
-            "modelmux.adapters.gemini.GeminiAdapter.check_available",
+            "vyane.adapters.gemini.GeminiAdapter.check_available",
             return_value=True,
         ),
         patch(
-            "modelmux.adapters.claude.ClaudeAdapter.check_available",
+            "vyane.adapters.claude.ClaudeAdapter.check_available",
             return_value=False,
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         raw = asyncio.run(
@@ -328,10 +328,10 @@ def test_retry_clamped_to_5():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available",
+            "vyane.adapters.codex.CodexAdapter.check_available",
             return_value=True,
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         raw = asyncio.run(
@@ -369,9 +369,9 @@ def test_progress_notification_sent():
 
     with (
         patch(
-            "modelmux.adapters.codex.CodexAdapter.check_available", return_value=True
+            "vyane.adapters.codex.CodexAdapter.check_available", return_value=True
         ),
-        patch("modelmux.adapters.base.BaseAdapter.run", mock_run),
+        patch("vyane.adapters.base.BaseAdapter.run", mock_run),
     ):
         asyncio.run(
             mux_dispatch(

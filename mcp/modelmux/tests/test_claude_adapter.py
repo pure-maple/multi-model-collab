@@ -1,6 +1,6 @@
 """Tests for the Claude CLI adapter."""
 
-from modelmux.adapters.claude import ClaudeAdapter
+from vyane.adapters.claude import ClaudeAdapter
 
 
 class TestClaudeAdapter:
@@ -110,7 +110,7 @@ class TestParseOutput:
         assert sid == "second"
 
     def test_in_registry(self):
-        from modelmux.adapters import ADAPTERS
+        from vyane.adapters import ADAPTERS
 
         assert "claude" in ADAPTERS
         assert ADAPTERS["claude"] is ClaudeAdapter

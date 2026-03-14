@@ -1,6 +1,6 @@
 """Tests for broadcast multi-model support and provider/model parsing."""
 
-from modelmux.server import _parse_provider_spec
+from vyane.server import _parse_provider_spec
 
 
 class TestParseProviderSpec:

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.audit import (
+from vyane.audit import (
     AuditEntry,
     _audit_file,
     count_recent,
@@ -40,8 +40,8 @@ class TestLogDispatch:
     def test_writes_entry(self, tmp_path):
         audit = tmp_path / "audit.jsonl"
         with (
-            patch("modelmux.audit._audit_dir", return_value=tmp_path),
-            patch("modelmux.audit._audit_file", return_value=audit),
+            patch("vyane.audit._audit_dir", return_value=tmp_path),
+            patch("vyane.audit._audit_file", return_value=audit),
         ):
             entry = AuditEntry(
                 timestamp="2026-03-07T12:00:00+00:00",
@@ -61,8 +61,8 @@ class TestLogDispatch:
     def test_appends_multiple(self, tmp_path):
         audit = tmp_path / "audit.jsonl"
         with (
-            patch("modelmux.audit._audit_dir", return_value=tmp_path),
-            patch("modelmux.audit._audit_file", return_value=audit),
+            patch("vyane.audit._audit_dir", return_value=tmp_path),
+            patch("vyane.audit._audit_file", return_value=audit),
         ):
             log_dispatch(AuditEntry(provider="codex", status="success"))
             log_dispatch(AuditEntry(provider="gemini", status="error"))
@@ -84,14 +84,14 @@ class TestReadRecent:
         ]
         audit.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
 
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             result = read_recent(hours=1)
         assert len(result) == 1
         assert result[0].provider == "gemini"
 
     def test_no_file(self, tmp_path):
         audit = tmp_path / "nonexistent.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             result = read_recent()
         assert result == []
 
@@ -102,7 +102,7 @@ class TestReadRecent:
             f'{{"timestamp": "{now}", "provider": "codex", "status": "ok"}}\n'
             "not json\n"
         )
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             result = read_recent(hours=1)
         assert len(result) == 1
 
@@ -117,14 +117,14 @@ class TestCountRecent:
         ]
         audit.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
 
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             assert count_recent(hours=1) == 2
 
 
 class TestGetAuditStats:
     def test_no_file(self, tmp_path):
         audit = tmp_path / "nonexistent.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             stats = get_audit_stats()
         assert stats["total_entries"] == 0
 
@@ -137,7 +137,7 @@ class TestGetAuditStats:
         ]
         audit.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
 
-        with patch("modelmux.audit._audit_file", return_value=audit):
+        with patch("vyane.audit._audit_file", return_value=audit):
             stats = get_audit_stats()
         assert stats["total_entries"] == 3
         assert stats["by_provider"]["codex"] == 2

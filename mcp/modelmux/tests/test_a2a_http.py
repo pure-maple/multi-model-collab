@@ -3,13 +3,13 @@
 
 from starlette.testclient import TestClient
 
-from modelmux.a2a.http_server import (
+from vyane.a2a.http_server import (
     A2AServer,
     InvalidParamsError,
     TaskStore,
     _extract_task_params,
 )
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 # --- Fake adapter for testing ---
 
@@ -65,7 +65,7 @@ def test_agent_card_endpoint():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["name"] == "Plexus"
+    assert card["name"] == "Vyane"
     assert card["protocolVersion"] == "0.3.0"
     assert "skills" in card
     assert "capabilities" in card
@@ -575,7 +575,7 @@ def test_auth_agent_card_always_open():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["name"] == "Plexus"
+    assert card["name"] == "Vyane"
     assert "bearer" in card.get("authSchemes", [])
 
 
@@ -818,7 +818,7 @@ def test_task_store_load_skips_blank_lines(tmp_path):
 
 def test_extract_push_config():
     """_extract_push_config should parse pushNotification from params."""
-    from modelmux.a2a.http_server import _extract_push_config
+    from vyane.a2a.http_server import _extract_push_config
 
     params = {
         "pushNotification": {
@@ -836,7 +836,7 @@ def test_extract_push_config():
 
 def test_extract_push_config_missing():
     """No pushNotification should return None."""
-    from modelmux.a2a.http_server import _extract_push_config
+    from vyane.a2a.http_server import _extract_push_config
 
     assert _extract_push_config({}) is None
     assert _extract_push_config({"pushNotification": {}}) is None
@@ -845,7 +845,7 @@ def test_extract_push_config_missing():
 
 def test_extract_push_config_defaults():
     """Default events should be completed and failed."""
-    from modelmux.a2a.http_server import _extract_push_config
+    from vyane.a2a.http_server import _extract_push_config
 
     pc = _extract_push_config({"pushNotification": {"url": "http://x.com/hook"}})
     assert pc is not None
@@ -867,7 +867,7 @@ def test_push_notification_fires_on_completed():
     import asyncio
     from unittest.mock import AsyncMock, patch
 
-    from modelmux.a2a.http_server import PushConfig, TaskEntry
+    from vyane.a2a.http_server import PushConfig, TaskEntry
 
     server = A2AServer(
         get_adapter=_get_fake_adapter,
@@ -910,7 +910,7 @@ def test_push_notification_skips_non_matching_event():
     import asyncio
     from unittest.mock import AsyncMock, patch
 
-    from modelmux.a2a.http_server import PushConfig, TaskEntry
+    from vyane.a2a.http_server import PushConfig, TaskEntry
 
     server = A2AServer(
         get_adapter=_get_fake_adapter,
@@ -941,7 +941,7 @@ def test_push_notification_no_config():
     """No push config should be a no-op."""
     import asyncio
 
-    from modelmux.a2a.http_server import TaskEntry
+    from vyane.a2a.http_server import TaskEntry
 
     server = A2AServer(
         get_adapter=_get_fake_adapter,

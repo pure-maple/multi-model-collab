@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modelmux.adapters.base import (
+from vyane.adapters.base import (
     AdapterResult,
     BaseAdapter,
     TokenUsage,
@@ -224,7 +224,7 @@ class TestBaseAdapterRun:
             raise FileNotFoundError("echo not found")
             yield  # make it a generator  # noqa: E501
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(prompt="hi", workdir="/tmp")
         assert result.status == "error"
         assert "not found" in result.error
@@ -238,7 +238,7 @@ class TestBaseAdapterRun:
             raise RuntimeError("boom")
             yield  # noqa: E501
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(prompt="hi", workdir="/tmp")
         assert result.status == "error"
         assert "Subprocess error" in result.error
@@ -251,7 +251,7 @@ class TestBaseAdapterRun:
             yield "partial output"
             return 124  # timeout
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(prompt="hi", workdir="/tmp")
         assert result.status == "timeout"
         assert "Timed out" in result.error
@@ -264,7 +264,7 @@ class TestBaseAdapterRun:
             yield "hello world"
             return 0
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(prompt="hi", workdir="/tmp")
         assert result.status == "success"
         assert result.output == "hello world"
@@ -282,7 +282,7 @@ class TestBaseAdapterRun:
             yield "line2"
             return 0
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(
                 prompt="hi", workdir="/tmp", on_progress=lambda m: progress_msgs.append(m)
             )
@@ -310,7 +310,7 @@ class TestBaseAdapterRun:
             await asyncio.sleep(0)
             return run_finished
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             _, saw_finished = await asyncio.gather(do_run(), observer())
 
         assert saw_finished is False
@@ -323,7 +323,7 @@ class TestBaseAdapterRun:
             yield "ok"
             return 0
 
-        with patch("modelmux.adapters.base.stream_subprocess", fake_stream):
+        with patch("vyane.adapters.base.stream_subprocess", fake_stream):
             result = await adapter.run(
                 prompt="hi", workdir="/tmp", extra_args={"model": "--inject"}
             )

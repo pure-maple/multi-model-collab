@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-from modelmux.adapters.base import BaseAdapter
-from modelmux.server import (
+from vyane.adapters.base import BaseAdapter
+from vyane.server import (
     _adapter_cache,
     _auto_route,
     _build_extra_args,
@@ -21,7 +21,7 @@ class TestAutoRoute:
         config.default_provider = "codex"
 
         with patch(
-            "modelmux.server.route_by_rules", return_value="gemini"
+            "vyane.server.route_by_rules", return_value="gemini"
         ):
             result = _auto_route(
                 "test task", config, ["codex", "gemini"], []
@@ -34,9 +34,9 @@ class TestAutoRoute:
         config.default_provider = "codex"
 
         with patch(
-            "modelmux.server.route_by_rules", return_value="gemini"
+            "vyane.server.route_by_rules", return_value="gemini"
         ), patch(
-            "modelmux.server.smart_route", return_value=("codex", {})
+            "vyane.server.smart_route", return_value=("codex", {})
         ):
             result = _auto_route(
                 "test task", config, ["codex", "gemini"], ["gemini"]
@@ -49,7 +49,7 @@ class TestAutoRoute:
         config.default_provider = "codex"
 
         with patch(
-            "modelmux.server.smart_route", return_value=("gemini", {})
+            "vyane.server.smart_route", return_value=("gemini", {})
         ):
             result = _auto_route(
                 "test task", config, ["codex", "gemini"], []
@@ -62,9 +62,9 @@ class TestAutoRoute:
         config.default_provider = "codex"
 
         with patch(
-            "modelmux.server.route_by_rules", return_value=None
+            "vyane.server.route_by_rules", return_value=None
         ), patch(
-            "modelmux.server.smart_route", return_value=("codex", {})
+            "vyane.server.smart_route", return_value=("codex", {})
         ):
             result = _auto_route(
                 "test task", config, ["codex"], []
@@ -99,7 +99,7 @@ class TestGetAdapter:
     def test_custom_instance(self):
         mock_adapter = MagicMock(spec=BaseAdapter)
         with patch(
-            "modelmux.server.get_all_adapters",
+            "vyane.server.get_all_adapters",
             return_value={"custom": mock_adapter},
         ):
             result = _get_adapter("custom")
@@ -220,10 +220,10 @@ class TestGetFallbackCandidates:
 class TestProviderHealthSummary:
     def test_no_history(self):
         with patch(
-            "modelmux.server.read_history", return_value=[]
+            "vyane.server.read_history", return_value=[]
         ), patch(
-            "modelmux.routing._get_cached", return_value=None
-        ), patch("modelmux.routing._set_cached"):
+            "vyane.routing._get_cached", return_value=None
+        ), patch("vyane.routing._set_cached"):
             result = _provider_health_summary()
         assert result == {}
 
@@ -246,10 +246,10 @@ class TestProviderHealthSummary:
             },
         ]
         with patch(
-            "modelmux.server.read_history", return_value=entries
+            "vyane.server.read_history", return_value=entries
         ), patch(
-            "modelmux.routing._get_cached", return_value=None
-        ), patch("modelmux.routing._set_cached"):
+            "vyane.routing._get_cached", return_value=None
+        ), patch("vyane.routing._set_cached"):
             result = _provider_health_summary()
         assert "codex" in result
         assert "success_rate" in result["codex"]
@@ -259,7 +259,7 @@ class TestProviderHealthSummary:
     def test_uses_cache(self):
         cached = {"codex": {"last_used_ago": "5s ago"}}
         with patch(
-            "modelmux.routing._get_cached", return_value=cached
+            "vyane.routing._get_cached", return_value=cached
         ):
             result = _provider_health_summary()
         assert result == cached

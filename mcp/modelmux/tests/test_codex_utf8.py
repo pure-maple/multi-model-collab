@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-from modelmux.adapters.codex import (
+from vyane.adapters.codex import (
     CodexAdapter,
     _create_ascii_symlink,
     _find_git_dir,
@@ -148,7 +148,7 @@ def test_run_sets_pwd_env_for_non_ascii():
 
     async def mock_super_run(self_, **kwargs):
         captured_env.update(kwargs.get("env_overrides") or {})
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         return AdapterResult(provider="codex", status="success", output="ok")
 
@@ -179,7 +179,7 @@ def test_run_sets_git_env_for_non_ascii_in_repo():
     async def mock_super_run(self_, **kwargs):
         captured.update(kwargs.get("env_overrides") or {})
         captured["workdir"] = kwargs.get("workdir", "")
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         return AdapterResult(provider="codex", status="success", output="ok")
 
@@ -208,7 +208,7 @@ def test_run_no_git_env_without_git_dir():
 
     async def mock_super_run(self_, **kwargs):
         captured.update(kwargs.get("env_overrides") or {})
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         return AdapterResult(provider="codex", status="success", output="ok")
 
@@ -234,7 +234,7 @@ def test_run_preserves_existing_env_overrides():
 
     async def mock_super_run(self_, **kwargs):
         captured_env.update(kwargs.get("env_overrides") or {})
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         return AdapterResult(provider="codex", status="success", output="ok")
 
@@ -265,7 +265,7 @@ def test_run_no_pwd_for_ascii_workdir():
 
     async def mock_super_run(self_, **kwargs):
         captured_env.update(kwargs.get("env_overrides") or {})
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         return AdapterResult(provider="codex", status="success", output="ok")
 

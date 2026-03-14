@@ -2,8 +2,8 @@
 
 import time
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter
-from modelmux.status import DispatchStatus
+from vyane.adapters.base import AdapterResult, BaseAdapter
+from vyane.status import DispatchStatus
 
 
 class FakeStreamingAdapter(BaseAdapter):

@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from modelmux.adapters.opencode import OpencodeAdapter
+from vyane.adapters.opencode import OpencodeAdapter
 
 
 class TestOpencodeAdapter:
@@ -158,7 +158,7 @@ class TestParseOutput:
 
 class TestRegistry:
     def test_in_registry(self):
-        from modelmux.adapters import ADAPTERS
+        from vyane.adapters import ADAPTERS
 
         assert "opencode" in ADAPTERS
         assert ADAPTERS["opencode"] is OpencodeAdapter

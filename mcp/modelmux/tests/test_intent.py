@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
-from modelmux.routing import (
+from vyane.routing import (
     IntentCategory,
     IntentResult,
     classify_intent,

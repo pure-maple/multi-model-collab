@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from modelmux.orchestrate import TaskState, create_task
-from modelmux.orchestrate_store import OrchestrateStore, _store_file
+from vyane.orchestrate import TaskState, create_task
+from vyane.orchestrate_store import OrchestrateStore, _store_file
 
 
 class TestOrchestrateStore:
@@ -131,7 +131,7 @@ class TestOrchestrateStore:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         assert (
             _store_file()
-            == tmp_path / ".config" / "modelmux" / "orchestrate_tasks.jsonl"
+            == tmp_path / ".config" / "vyane" / "orchestrate_tasks.jsonl"
         )
 
     def test_next_task_id_ignores_non_matching_ids(self, tmp_path):

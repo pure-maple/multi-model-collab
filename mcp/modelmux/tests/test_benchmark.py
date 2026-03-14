@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modelmux.benchmark import (
+from vyane.benchmark import (
     BENCHMARK_TASKS,
     BenchmarkReport,
     BenchmarkResult,
@@ -89,7 +89,7 @@ class TestBuildSummary:
 
 class TestRunBenchmark:
     def test_run_with_mock_adapter(self):
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         mock_result = AdapterResult(
             run_id="test",
@@ -103,8 +103,8 @@ class TestRunBenchmark:
         mock_adapter._binary_name.return_value = "codex"
         mock_adapter.run = AsyncMock(return_value=mock_result)
 
-        with patch("modelmux.adapters.get_all_adapters", return_value={"codex": mock_adapter}):
-            with patch("modelmux.adapters.ADAPTERS", {"codex": type(mock_adapter)}):
+        with patch("vyane.adapters.get_all_adapters", return_value={"codex": mock_adapter}):
+            with patch("vyane.adapters.ADAPTERS", {"codex": type(mock_adapter)}):
                 report = run_benchmark(
                     providers=["codex"],
                     task_names=["code_review"],
@@ -121,8 +121,8 @@ class TestRunBenchmark:
         mock_adapter._binary_name.return_value = "failing"
         mock_adapter.run = AsyncMock(side_effect=RuntimeError("connection failed"))
 
-        with patch("modelmux.adapters.get_all_adapters", return_value={"failing": mock_adapter}):
-            with patch("modelmux.adapters.ADAPTERS", {"failing": type(mock_adapter)}):
+        with patch("vyane.adapters.get_all_adapters", return_value={"failing": mock_adapter}):
+            with patch("vyane.adapters.ADAPTERS", {"failing": type(mock_adapter)}):
                 report = run_benchmark(
                     providers=["failing"],
                     task_names=["reasoning"],
@@ -161,7 +161,7 @@ class TestFormatReport:
             },
         )
         text = format_report(report)
-        assert "modelmux Benchmark Report" in text
+        assert "Vyane Benchmark Report" in text
         assert "codex" in text
         assert "5.2s" in text
         assert "code_review" in text

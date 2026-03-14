@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 # --- Fake Context for testing MCP tools ---
 
@@ -105,30 +105,30 @@ class TestMuxDispatch:
     @pytest.fixture(autouse=True)
     def _reset_loader(self):
         """Reset custom provider loader flag."""
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
         yield
         _ensure_custom_providers_loaded._done = False
 
     @pytest.mark.asyncio
     async def test_dispatch_success(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         fake = FakeAdapter(output="hello world")
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=fake),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -139,7 +139,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -157,18 +157,18 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_policy_blocked(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=FakeAdapter()),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=FakeAdapter()),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -179,7 +179,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -197,9 +197,9 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_security_scan_uses_original_task(self):
-        from modelmux.routing import IntentCategory, IntentResult
-        from modelmux.security import SecurityFinding, SecurityResult, ThreatLevel
-        from modelmux.server import mux_dispatch
+        from vyane.routing import IntentCategory, IntentResult
+        from vyane.security import SecurityFinding, SecurityResult, ThreatLevel
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         security_result = SecurityResult(
@@ -216,17 +216,17 @@ class TestMuxDispatch:
         )
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=FakeAdapter()),
-            patch("modelmux.server.get_category_binding") as mock_binding,
-            patch("modelmux.server.classify_intent") as mock_classify,
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.scan_task", return_value=security_result) as mock_scan,
-            patch("modelmux.audit.log_security_event") as mock_log_security_event,
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=FakeAdapter()),
+            patch("vyane.server.get_category_binding") as mock_binding,
+            patch("vyane.server.classify_intent") as mock_classify,
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.scan_task", return_value=security_result) as mock_scan,
+            patch("vyane.audit.log_security_event") as mock_log_security_event,
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -237,7 +237,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
 
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
@@ -270,8 +270,8 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_binding_skips_excluded_provider_override(self):
-        from modelmux.routing import IntentCategory, IntentResult
-        from modelmux.server import mux_dispatch
+        from vyane.routing import IntentCategory, IntentResult
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         gemini = FakeAdapter(output="gemini result")
@@ -283,24 +283,24 @@ class TestMuxDispatch:
             return {"gemini": gemini, "codex": codex}[name]
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", side_effect=get_adapter),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", side_effect=get_adapter),
             patch(
-                "modelmux.server.get_all_adapters",
+                "vyane.server.get_all_adapters",
                 return_value={"gemini": gemini, "codex": codex},
             ),
-            patch("modelmux.server._auto_route", return_value="gemini"),
-            patch("modelmux.server.get_category_binding") as mock_binding,
-            patch("modelmux.server.classify_intent") as mock_classify,
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._auto_route", return_value="gemini"),
+            patch("vyane.server.get_category_binding") as mock_binding,
+            patch("vyane.server.classify_intent") as mock_classify,
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -311,7 +311,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
 
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
@@ -341,8 +341,8 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_binding_merge_handles_none_extra_args(self):
-        from modelmux.routing import IntentCategory, IntentResult
-        from modelmux.server import mux_dispatch
+        from vyane.routing import IntentCategory, IntentResult
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = MagicMock()
@@ -358,20 +358,20 @@ class TestMuxDispatch:
         )
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=adapter),
-            patch("modelmux.server.get_category_binding") as mock_binding,
-            patch("modelmux.server.classify_intent") as mock_classify,
-            patch("modelmux.server._build_extra_args", return_value=(None, None)),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=adapter),
+            patch("vyane.server.get_category_binding") as mock_binding,
+            patch("vyane.server.classify_intent") as mock_classify,
+            patch("vyane.server._build_extra_args", return_value=(None, None)),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -382,7 +382,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
 
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
@@ -412,7 +412,7 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_cli_not_found_fallback(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         unavail = UnavailableAdapter()
@@ -424,18 +424,18 @@ class TestMuxDispatch:
             return fallback
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", side_effect=mock_get_adapter),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
-            patch("modelmux.server._get_fallback_candidates", return_value=["gemini"]),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", side_effect=mock_get_adapter),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
+            patch("vyane.server._get_fallback_candidates", return_value=["gemini"]),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -446,7 +446,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -464,20 +464,20 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_no_cli_available(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         unavail = UnavailableAdapter()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=unavail),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server._get_fallback_candidates", return_value=[]),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=unavail),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server._get_fallback_candidates", return_value=[]),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -488,7 +488,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -506,25 +506,25 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_auto_route(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         fake = FakeAdapter(output="auto routed")
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.get_all_adapters", return_value={"codex": fake}),
-            patch("modelmux.server._auto_route", return_value="codex"),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=fake),
+            patch("vyane.server.get_all_adapters", return_value={"codex": fake}),
+            patch("vyane.server._auto_route", return_value="codex"),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -535,7 +535,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -553,23 +553,23 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_provider_model_syntax(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         fake = FakeAdapter(output="model syntax")
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=fake),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -580,7 +580,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -597,7 +597,7 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_failover(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         failing = FakeAdapter(output="", status="error", error="cli crash")
@@ -609,18 +609,18 @@ class TestMuxDispatch:
             return fallback
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", side_effect=mock_get_adapter),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
-            patch("modelmux.server._get_fallback_candidates", return_value=["gemini"]),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", side_effect=mock_get_adapter),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
+            patch("vyane.server._get_fallback_candidates", return_value=["gemini"]),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -631,7 +631,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -650,7 +650,7 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_returns_auto_decompose_result(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = MagicMock()
@@ -666,15 +666,15 @@ class TestMuxDispatch:
         )
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=adapter),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=adapter),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
             patch(
-                "modelmux.server._auto_decompose_task",
+                "vyane.server._auto_decompose_task",
                 return_value=decompose_result,
             ),
         ):
@@ -687,7 +687,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
 
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
@@ -708,7 +708,7 @@ class TestMuxDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_retries_same_provider_and_reports_progress(self):
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = MagicMock()
@@ -739,19 +739,19 @@ class TestMuxDispatch:
         adapter.run = AsyncMock(side_effect=run_with_progress)
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=adapter),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status") as mock_write_status,
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=adapter),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status") as mock_write_status,
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
             patch(
-                "modelmux.server.asyncio.sleep",
+                "vyane.server.asyncio.sleep",
                 new_callable=AsyncMock,
             ) as mock_sleep,
         ):
@@ -764,7 +764,7 @@ class TestMuxDispatch:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
 
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
@@ -795,8 +795,8 @@ class TestMuxDispatch:
 class TestAutoDecomposeTask:
     @pytest.mark.asyncio
     async def test_auto_decompose_task_returns_none_when_planner_fails(self):
-        from modelmux.detect import CallerInfo
-        from modelmux.server import _auto_decompose_task
+        from vyane.detect import CallerInfo
+        from vyane.server import _auto_decompose_task
 
         ctx = FakeContext()
         planner = MagicMock()
@@ -812,8 +812,8 @@ class TestAutoDecomposeTask:
         )
 
         with (
-            patch("modelmux.server._get_adapter", return_value=planner),
-            patch("modelmux.server._build_extra_args", return_value=([], {})),
+            patch("vyane.server._get_adapter", return_value=planner),
+            patch("vyane.server._build_extra_args", return_value=([], {})),
         ):
             result = await _auto_decompose_task(
                 task="investigate failure",
@@ -838,8 +838,8 @@ class TestAutoDecomposeTask:
 
     @pytest.mark.asyncio
     async def test_auto_decompose_task_returns_none_when_plan_is_simple(self):
-        from modelmux.detect import CallerInfo
-        from modelmux.server import _auto_decompose_task
+        from vyane.detect import CallerInfo
+        from vyane.server import _auto_decompose_task
 
         ctx = FakeContext()
         planner = MagicMock()
@@ -855,9 +855,9 @@ class TestAutoDecomposeTask:
         plan = FakeDecomposePlan(subtasks=[], waves=[], should_decompose=False)
 
         with (
-            patch("modelmux.server._get_adapter", return_value=planner),
-            patch("modelmux.server._build_extra_args", return_value=([], {})),
-            patch("modelmux.server.parse_decomposition", return_value=plan),
+            patch("vyane.server._get_adapter", return_value=planner),
+            patch("vyane.server._build_extra_args", return_value=([], {})),
+            patch("vyane.server.parse_decomposition", return_value=plan),
         ):
             result = await _auto_decompose_task(
                 task="say hello",
@@ -879,8 +879,8 @@ class TestAutoDecomposeTask:
 
     @pytest.mark.asyncio
     async def test_auto_decompose_task_uses_planner_for_unknown_provider(self):
-        from modelmux.detect import CallerInfo
-        from modelmux.server import _auto_decompose_task
+        from vyane.detect import CallerInfo
+        from vyane.server import _auto_decompose_task
 
         ctx = FakeContext()
         planner = MagicMock()
@@ -921,15 +921,15 @@ class TestAutoDecomposeTask:
         )
 
         with (
-            patch("modelmux.server._get_adapter", return_value=planner),
+            patch("vyane.server._get_adapter", return_value=planner),
             patch(
-                "modelmux.server.get_all_adapters",
+                "vyane.server.get_all_adapters",
                 return_value={"planner": planner},
             ),
-            patch("modelmux.server._build_extra_args", return_value=([], {})),
-            patch("modelmux.server.parse_decomposition", return_value=plan),
-            patch("modelmux.server.build_merge_prompt", return_value="merge"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server._build_extra_args", return_value=([], {})),
+            patch("vyane.server.parse_decomposition", return_value=plan),
+            patch("vyane.server.build_merge_prompt", return_value="merge"),
+            patch("vyane.server.log_result"),
         ):
             result = await _auto_decompose_task(
                 task="fallback test",
@@ -952,8 +952,8 @@ class TestAutoDecomposeTask:
 
     @pytest.mark.asyncio
     async def test_auto_decompose_task_executes_waves_and_merges_results(self):
-        from modelmux.detect import CallerInfo
-        from modelmux.server import _auto_decompose_task
+        from vyane.detect import CallerInfo
+        from vyane.server import _auto_decompose_task
 
         ctx = FakeContext()
         planner = MagicMock()
@@ -1034,9 +1034,9 @@ class TestAutoDecomposeTask:
             return mapping[name]
 
         with (
-            patch("modelmux.server._get_adapter", side_effect=get_adapter),
+            patch("vyane.server._get_adapter", side_effect=get_adapter),
             patch(
-                "modelmux.server.get_all_adapters",
+                "vyane.server.get_all_adapters",
                 return_value={
                     "planner": planner,
                     "alpha": available,
@@ -1045,15 +1045,15 @@ class TestAutoDecomposeTask:
                 },
             ),
             patch(
-                "modelmux.server._build_extra_args",
+                "vyane.server._build_extra_args",
                 return_value=(["--flag"], {"MODEL_PROFILE": "test"}),
             ),
-            patch("modelmux.server.parse_decomposition", return_value=plan),
+            patch("vyane.server.parse_decomposition", return_value=plan),
             patch(
-                "modelmux.server.build_merge_prompt",
+                "vyane.server.build_merge_prompt",
                 return_value="merge collect + summarize",
             ) as mock_merge_prompt,
-            patch("modelmux.server.log_result") as mock_log_result,
+            patch("vyane.server.log_result") as mock_log_result,
         ):
             result = await _auto_decompose_task(
                 task="investigate regression",
@@ -1107,14 +1107,14 @@ class TestAutoDecomposeTask:
 class TestMuxBroadcast:
     @pytest.fixture(autouse=True)
     def _reset_loader(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
         yield
         _ensure_custom_providers_loaded._done = False
 
     @pytest.mark.asyncio
     async def test_broadcast_success(self):
-        from modelmux.server import mux_broadcast
+        from vyane.server import mux_broadcast
 
         ctx = FakeContext()
         fake_codex = FakeAdapter(output="codex result")
@@ -1128,20 +1128,20 @@ class TestMuxBroadcast:
             return fake_gemini
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", side_effect=mock_get_adapter),
-            patch("modelmux.server.get_all_adapters", return_value={
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", side_effect=mock_get_adapter),
+            patch("vyane.server.get_all_adapters", return_value={
                 "codex": fake_codex, "gemini": fake_gemini,
             }),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1152,7 +1152,7 @@ class TestMuxBroadcast:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -1171,17 +1171,17 @@ class TestMuxBroadcast:
 
     @pytest.mark.asyncio
     async def test_broadcast_no_providers(self):
-        from modelmux.server import mux_broadcast
+        from vyane.server import mux_broadcast
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server.get_all_adapters", return_value={}),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server.get_all_adapters", return_value={}),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.count_recent", return_value=0),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1192,7 +1192,7 @@ class TestMuxBroadcast:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -1209,25 +1209,25 @@ class TestMuxBroadcast:
 
     @pytest.mark.asyncio
     async def test_broadcast_with_compare(self):
-        from modelmux.server import mux_broadcast
+        from vyane.server import mux_broadcast
 
         ctx = FakeContext()
         fake = FakeAdapter(output="result")
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.get_all_adapters", return_value={"codex": fake}),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
-            patch("modelmux.server.compare_results", return_value={"similarity": 1.0}),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server._get_adapter", return_value=fake),
+            patch("vyane.server.get_all_adapters", return_value={"codex": fake}),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
+            patch("vyane.server.compare_results", return_value={"similarity": 1.0}),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1238,7 +1238,7 @@ class TestMuxBroadcast:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -1256,19 +1256,19 @@ class TestMuxBroadcast:
 
     @pytest.mark.asyncio
     async def test_broadcast_policy_blocked(self):
-        from modelmux.server import mux_broadcast
+        from vyane.server import mux_broadcast
 
         ctx = FakeContext()
         fake = FakeAdapter()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server.get_all_adapters", return_value={"codex": fake}),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server.get_all_adapters", return_value={"codex": fake}),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1279,7 +1279,7 @@ class TestMuxBroadcast:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform=""),
                 [],
@@ -1301,7 +1301,7 @@ class TestMuxBroadcast:
 class TestMuxHistory:
     @pytest.mark.asyncio
     async def test_history_entries(self):
-        from modelmux.server import mux_history
+        from vyane.server import mux_history
 
         ctx = FakeContext()
         entries = [
@@ -1309,7 +1309,7 @@ class TestMuxHistory:
         ]
 
         with (
-            patch("modelmux.server.read_history", return_value=entries),
+            patch("vyane.server.read_history", return_value=entries),
         ):
             result = await mux_history(ctx=ctx, limit=10)
             data = json.loads(result)
@@ -1318,27 +1318,27 @@ class TestMuxHistory:
 
     @pytest.mark.asyncio
     async def test_history_stats_only(self):
-        from modelmux.server import mux_history
+        from vyane.server import mux_history
 
         ctx = FakeContext()
         stats = {"total": 10, "success_rate": 0.9}
 
-        with patch("modelmux.server.get_history_stats", return_value=stats):
+        with patch("vyane.server.get_history_stats", return_value=stats):
             result = await mux_history(ctx=ctx, stats_only=True)
             data = json.loads(result)
             assert data["total"] == 10
 
     @pytest.mark.asyncio
     async def test_history_with_costs(self):
-        from modelmux.server import mux_history
+        from vyane.server import mux_history
 
         ctx = FakeContext()
         entries = [{"provider": "codex", "status": "success"}]
         costs = {"total_usd": 0.05}
 
         with (
-            patch("modelmux.server.read_history", return_value=entries),
-            patch("modelmux.costs.aggregate_costs", return_value=costs),
+            patch("vyane.server.read_history", return_value=entries),
+            patch("vyane.costs.aggregate_costs", return_value=costs),
         ):
             result = await mux_history(ctx=ctx, costs=True)
             data = json.loads(result)
@@ -1352,17 +1352,17 @@ class TestMuxHistory:
 class TestMuxFeedback:
     @pytest.mark.asyncio
     async def test_feedback_submit(self):
-        from modelmux.server import mux_feedback
+        from vyane.server import mux_feedback
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.feedback.log_feedback"),
-            patch("modelmux.feedback.read_feedback", return_value=[]),
-            patch("modelmux.server.read_history", return_value=[
+            patch("vyane.feedback.log_feedback"),
+            patch("vyane.feedback.read_feedback", return_value=[]),
+            patch("vyane.server.read_history", return_value=[
                 {"run_id": "abc", "provider": "codex", "task": "test task"},
             ]),
-            patch("modelmux.routing.classify_task", return_value="analysis"),
+            patch("vyane.routing.classify_task", return_value="analysis"),
         ):
             result = await mux_feedback(
                 run_id="abc",
@@ -1376,7 +1376,7 @@ class TestMuxFeedback:
 
     @pytest.mark.asyncio
     async def test_feedback_invalid_rating(self):
-        from modelmux.server import mux_feedback
+        from vyane.server import mux_feedback
 
         ctx = FakeContext()
 
@@ -1391,12 +1391,12 @@ class TestMuxFeedback:
 
     @pytest.mark.asyncio
     async def test_feedback_list_recent(self):
-        from modelmux.server import mux_feedback
+        from vyane.server import mux_feedback
 
         ctx = FakeContext()
         feedback_entries = [{"run_id": "x", "rating": 4}]
 
-        with patch("modelmux.feedback.read_feedback", return_value=feedback_entries):
+        with patch("vyane.feedback.read_feedback", return_value=feedback_entries):
             result = await mux_feedback(
                 run_id="",
                 rating=1,
@@ -1408,13 +1408,13 @@ class TestMuxFeedback:
 
     @pytest.mark.asyncio
     async def test_feedback_provider_not_found(self):
-        from modelmux.server import mux_feedback
+        from vyane.server import mux_feedback
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.feedback.read_feedback", return_value=[]),
-            patch("modelmux.server.read_history", return_value=[]),
+            patch("vyane.feedback.read_feedback", return_value=[]),
+            patch("vyane.server.read_history", return_value=[]),
         ):
             result = await mux_feedback(
                 run_id="missing",
@@ -1432,29 +1432,29 @@ class TestMuxFeedback:
 class TestMuxCheck:
     @pytest.fixture(autouse=True)
     def _reset_loader(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
         yield
         _ensure_custom_providers_loaded._done = False
 
     @pytest.mark.asyncio
     async def test_check_basic(self):
-        from modelmux.server import mux_check
+        from vyane.server import mux_check
 
         ctx = FakeContext()
         fake = FakeAdapter()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server.get_all_adapters", return_value={"fake": fake}),
-            patch("modelmux.server._provider_health_summary", return_value={}),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.list_active", return_value=[]),
-            patch("modelmux.server.get_audit_stats", return_value={}),
-            patch("modelmux.routing._BENCHMARK_FILE") as mock_bf,
-            patch("modelmux.feedback._feedback_file") as mock_ff,
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server.get_all_adapters", return_value={"fake": fake}),
+            patch("vyane.server._provider_health_summary", return_value={}),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.list_active", return_value=[]),
+            patch("vyane.server.get_audit_stats", return_value={}),
+            patch("vyane.routing._BENCHMARK_FILE") as mock_bf,
+            patch("vyane.feedback._feedback_file") as mock_ff,
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1465,7 +1465,7 @@ class TestMuxCheck:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform="test"),
                 [],
@@ -1492,7 +1492,7 @@ class TestMuxCheck:
 
     @pytest.mark.asyncio
     async def test_check_with_diagnose(self):
-        from modelmux.server import mux_check
+        from vyane.server import mux_check
 
         ctx = FakeContext()
         fake = FakeAdapter()
@@ -1508,22 +1508,22 @@ class TestMuxCheck:
             history_calls: int = 10
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_config") as mock_config,
-            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
-            patch("modelmux.server.get_all_adapters", return_value={"fake": fake}),
-            patch("modelmux.server._provider_health_summary", return_value={}),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.list_active", return_value=[]),
-            patch("modelmux.server.get_audit_stats", return_value={}),
-            patch("modelmux.routing._BENCHMARK_FILE") as mock_bf,
-            patch("modelmux.feedback._feedback_file") as mock_ff,
-            patch("modelmux.server.route_by_rules", return_value=None),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_config") as mock_config,
+            patch("vyane.server._detect_and_build_exclusions") as mock_detect,
+            patch("vyane.server.get_all_adapters", return_value={"fake": fake}),
+            patch("vyane.server._provider_health_summary", return_value={}),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.list_active", return_value=[]),
+            patch("vyane.server.get_audit_stats", return_value={}),
+            patch("vyane.routing._BENCHMARK_FILE") as mock_bf,
+            patch("vyane.feedback._feedback_file") as mock_ff,
+            patch("vyane.server.route_by_rules", return_value=None),
             patch(
-                "modelmux.routing.smart_route",
+                "vyane.routing.smart_route",
                 return_value=("fake", {"fake": FakeScore()}),
             ),
-            patch("modelmux.routing.classify_task", return_value="analysis"),
+            patch("vyane.routing.classify_task", return_value="analysis"),
         ):
             mock_config.return_value = MagicMock(
                 active_profile="default",
@@ -1534,7 +1534,7 @@ class TestMuxCheck:
                 auto_exclude_caller=True,
                 caller_override="",
             )
-            from modelmux.detect import CallerInfo
+            from vyane.detect import CallerInfo
             mock_detect.return_value = (
                 CallerInfo(client_name="test", provider="", platform="test"),
                 [],
@@ -1563,12 +1563,12 @@ class TestMuxCheck:
 class TestMuxWorkflow:
     @pytest.mark.asyncio
     async def test_workflow_list(self):
-        from modelmux.server import mux_workflow
+        from vyane.server import mux_workflow
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
+            patch("vyane.config._find_config_file", return_value=None),
         ):
             result = await mux_workflow(
                 workflow="",
@@ -1581,14 +1581,14 @@ class TestMuxWorkflow:
 
     @pytest.mark.asyncio
     async def test_workflow_unknown(self):
-        from modelmux.server import mux_workflow
+        from vyane.server import mux_workflow
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.config._find_config_file", return_value=None),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.count_recent", return_value=0),
         ):
             mock_policy.return_value = MagicMock()
 
@@ -1603,22 +1603,22 @@ class TestMuxWorkflow:
 
     @pytest.mark.asyncio
     async def test_workflow_execution(self):
-        from modelmux.server import mux_workflow
+        from vyane.server import mux_workflow
 
         ctx = FakeContext()
         fake = FakeAdapter(output="step result")
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
-            patch("modelmux.server._get_adapter", return_value=fake),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.save_workflow_state"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.config._find_config_file", return_value=None),
+            patch("vyane.server._get_adapter", return_value=fake),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.save_workflow_state"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_policy.return_value = MagicMock()
             mock_check.return_value = MagicMock(allowed=True)
@@ -1635,7 +1635,7 @@ class TestMuxWorkflow:
 
     @pytest.mark.asyncio
     async def test_workflow_stops_after_failed_step(self):
-        from modelmux.server import mux_workflow
+        from vyane.server import mux_workflow
 
         ctx = FakeContext()
         failing = MagicMock()
@@ -1658,16 +1658,16 @@ class TestMuxWorkflow:
             return failing if name == "codex" else skipped
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
-            patch("modelmux.server._get_adapter", side_effect=get_adapter),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.save_workflow_state"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.config._find_config_file", return_value=None),
+            patch("vyane.server._get_adapter", side_effect=get_adapter),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.save_workflow_state"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_policy.return_value = MagicMock()
             mock_check.return_value = MagicMock(allowed=True)
@@ -1686,8 +1686,8 @@ class TestMuxWorkflow:
 
     @pytest.mark.asyncio
     async def test_workflow_resume_uses_persisted_original_task(self):
-        from modelmux.server import mux_workflow
-        from modelmux.workflow import PersistentStep, WorkflowState
+        from vyane.server import mux_workflow
+        from vyane.workflow import PersistentStep, WorkflowState
 
         ctx = FakeContext()
         adapter = MagicMock()
@@ -1722,17 +1722,17 @@ class TestMuxWorkflow:
         )
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
-            patch("modelmux.server.load_workflow_state", return_value=persisted),
-            patch("modelmux.server._get_adapter", return_value=adapter),
-            patch("modelmux.server.load_policy") as mock_policy,
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.save_workflow_state"),
-            patch("modelmux.server.log_dispatch"),
-            patch("modelmux.server.log_result"),
+            patch("vyane.config._find_config_file", return_value=None),
+            patch("vyane.server.load_workflow_state", return_value=persisted),
+            patch("vyane.server._get_adapter", return_value=adapter),
+            patch("vyane.server.load_policy") as mock_policy,
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.save_workflow_state"),
+            patch("vyane.server.log_dispatch"),
+            patch("vyane.server.log_result"),
         ):
             mock_policy.return_value = MagicMock()
             mock_check.return_value = MagicMock(allowed=True)
@@ -1755,14 +1755,14 @@ class TestMuxWorkflow:
 class TestMuxCollaborate:
     @pytest.fixture(autouse=True)
     def _reset_loader(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
         yield
         _ensure_custom_providers_loaded._done = False
 
     @pytest.mark.asyncio
     async def test_collaborate_list_patterns(self):
-        from modelmux.server import mux_collaborate
+        from vyane.server import mux_collaborate
 
         ctx = FakeContext()
 
@@ -1778,11 +1778,11 @@ class TestMuxCollaborate:
 
     @pytest.mark.asyncio
     async def test_collaborate_invalid_json_providers(self):
-        from modelmux.server import mux_collaborate
+        from vyane.server import mux_collaborate
 
         ctx = FakeContext()
 
-        with patch("modelmux.server._ensure_custom_providers_loaded"):
+        with patch("vyane.server._ensure_custom_providers_loaded"):
             result = await mux_collaborate(
                 task="test",
                 pattern="review",
@@ -1795,15 +1795,15 @@ class TestMuxCollaborate:
 
     @pytest.mark.asyncio
     async def test_collaborate_policy_blocked(self):
-        from modelmux.server import mux_collaborate
+        from vyane.server import mux_collaborate
 
         ctx = FakeContext()
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
         ):
             mock_check.return_value = MagicMock(allowed=False, reason="blocked")
 
@@ -1820,7 +1820,7 @@ class TestMuxCollaborate:
     async def test_collaborate_success_uses_pattern_defaults_and_filters_trace(
         self,
     ):
-        from modelmux.server import mux_collaborate
+        from vyane.server import mux_collaborate
 
         ctx = FakeContext()
         pattern = SimpleNamespace(
@@ -1893,13 +1893,13 @@ class TestMuxCollaborate:
                 )
 
         with (
-            patch("modelmux.server._ensure_custom_providers_loaded"),
-            patch("modelmux.server.load_policy"),
-            patch("modelmux.server.check_policy") as mock_check,
-            patch("modelmux.server.count_recent", return_value=0),
-            patch("modelmux.a2a.patterns.get_pattern", return_value=pattern),
-            patch("modelmux.server.CollaborationEngine", FakeEngine),
-            patch("modelmux.server.log_result") as mock_log_result,
+            patch("vyane.server._ensure_custom_providers_loaded"),
+            patch("vyane.server.load_policy"),
+            patch("vyane.server.check_policy") as mock_check,
+            patch("vyane.server.count_recent", return_value=0),
+            patch("vyane.a2a.patterns.get_pattern", return_value=pattern),
+            patch("vyane.server.CollaborationEngine", FakeEngine),
+            patch("vyane.server.log_result") as mock_log_result,
         ):
             mock_check.return_value = MagicMock(allowed=True)
 
@@ -1936,7 +1936,7 @@ class TestMuxCollaborate:
 
 class TestDetectAndBuildExclusions:
     def test_with_auto_exclude(self):
-        from modelmux.server import _detect_and_build_exclusions
+        from vyane.server import _detect_and_build_exclusions
 
         ctx = FakeContext()
         config = MagicMock(
@@ -1946,8 +1946,8 @@ class TestDetectAndBuildExclusions:
         )
 
         with (
-            patch("modelmux.server.detect_caller") as mock_detect,
-            patch("modelmux.server.get_excluded_providers", return_value=["claude"]),
+            patch("vyane.server.detect_caller") as mock_detect,
+            patch("vyane.server.get_excluded_providers", return_value=["claude"]),
         ):
             mock_detect.return_value = MagicMock(
                 client_name="claude-code",
@@ -1959,7 +1959,7 @@ class TestDetectAndBuildExclusions:
             assert "claude" in excluded
 
     def test_without_auto_exclude(self):
-        from modelmux.server import _detect_and_build_exclusions
+        from vyane.server import _detect_and_build_exclusions
 
         ctx = FakeContext()
         config = MagicMock(
@@ -1969,8 +1969,8 @@ class TestDetectAndBuildExclusions:
         )
 
         with (
-            patch("modelmux.server.detect_caller") as mock_detect,
-            patch("modelmux.server.get_excluded_providers", return_value=["claude"]),
+            patch("vyane.server.detect_caller") as mock_detect,
+            patch("vyane.server.get_excluded_providers", return_value=["claude"]),
         ):
             mock_detect.return_value = MagicMock(
                 client_name="claude-code",
@@ -1987,18 +1987,18 @@ class TestDetectAndBuildExclusions:
 
 class TestEnsureCustomProvidersLoaded:
     def setup_method(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
 
     def teardown_method(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
 
     def test_loads_once(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
 
         with (
-            patch("modelmux.config._find_config_file", return_value=None),
+            patch("vyane.config._find_config_file", return_value=None),
         ):
             _ensure_custom_providers_loaded()
             assert _ensure_custom_providers_loaded._done is True
@@ -2006,13 +2006,13 @@ class TestEnsureCustomProvidersLoaded:
             _ensure_custom_providers_loaded()
 
     def test_loads_config_file(self):
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
 
         mock_file = MagicMock()
         with (
-            patch("modelmux.config._find_config_file", return_value=mock_file),
-            patch("modelmux.config._load_file", return_value={}),
-            patch("modelmux.server.load_custom_providers") as mock_load,
+            patch("vyane.config._find_config_file", return_value=mock_file),
+            patch("vyane.config._load_file", return_value={}),
+            patch("vyane.server.load_custom_providers") as mock_load,
         ):
             _ensure_custom_providers_loaded()
             assert mock_load.called

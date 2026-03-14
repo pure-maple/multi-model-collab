@@ -4,7 +4,7 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-from modelmux.history import (
+from vyane.history import (
     HistoryQuery,
     _history_file,
     _maybe_rotate,
@@ -19,13 +19,13 @@ class TestHistoryFile:
     def test_returns_path(self):
         path = _history_file()
         assert str(path).endswith("history.jsonl")
-        assert ".config/modelmux" in str(path)
+        assert ".config/vyane" in str(path) or ".config/modelmux" in str(path)
 
 
 class TestLogResult:
     def test_writes_entry(self, tmp_path):
         hf = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             log_result({"provider": "codex", "status": "success"}, task="test")
 
         assert hf.exists()
@@ -38,7 +38,7 @@ class TestLogResult:
 
     def test_task_truncated(self, tmp_path):
         hf = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             log_result({"provider": "test"}, task="x" * 1000)
 
         data = json.loads(hf.read_text().strip())
@@ -46,7 +46,7 @@ class TestLogResult:
 
     def test_appends_multiple(self, tmp_path):
         hf = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             log_result({"provider": "a"}, task="t1")
             log_result({"provider": "b"}, task="t2")
 
@@ -57,7 +57,7 @@ class TestLogResult:
 
     def test_custom_source(self, tmp_path):
         hf = tmp_path / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             log_result({"provider": "test"}, source="broadcast")
 
         data = json.loads(hf.read_text().strip())
@@ -65,7 +65,7 @@ class TestLogResult:
 
     def test_creates_parent_dirs(self, tmp_path):
         hf = tmp_path / "nested" / "dir" / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             log_result({"provider": "test"})
 
         assert hf.exists()
@@ -109,13 +109,13 @@ class TestReadHistory:
     def test_empty_file(self, tmp_path):
         hf = tmp_path / "h.jsonl"
         hf.write_text("")
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history()
         assert result == []
 
     def test_file_not_exists(self, tmp_path):
         hf = tmp_path / "nope.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history()
         assert result == []
 
@@ -127,7 +127,7 @@ class TestReadHistory:
             {"provider": "b", "ts": now - 1, "status": "success"},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history()
         assert len(result) == 2
         # Most recent first
@@ -138,7 +138,7 @@ class TestReadHistory:
         now = time.time()
         entries = [{"provider": f"p{i}", "ts": now - i} for i in range(10)]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history(HistoryQuery(limit=3))
         assert len(result) == 3
 
@@ -151,7 +151,7 @@ class TestReadHistory:
             {"provider": "codex", "ts": now},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history(HistoryQuery(provider="codex"))
         assert len(result) == 2
         assert all(r["provider"] == "codex" for r in result)
@@ -164,7 +164,7 @@ class TestReadHistory:
             {"provider": "b", "ts": now, "status": "error"},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history(HistoryQuery(status="error"))
         assert len(result) == 1
         assert result[0]["status"] == "error"
@@ -177,7 +177,7 @@ class TestReadHistory:
             {"provider": "b", "ts": now, "source": "broadcast"},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history(HistoryQuery(source="broadcast"))
         assert len(result) == 1
         assert result[0]["source"] == "broadcast"
@@ -190,7 +190,7 @@ class TestReadHistory:
             {"provider": "new", "ts": now - 60},  # 1 min ago
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history(HistoryQuery(hours=1))
         assert len(result) == 1
         assert result[0]["provider"] == "new"
@@ -198,7 +198,7 @@ class TestReadHistory:
     def test_skips_malformed_json(self, tmp_path):
         hf = tmp_path / "h.jsonl"
         hf.write_text('not json\n{"provider": "ok", "ts": ' + str(time.time()) + "}\n")
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history()
         assert len(result) == 1
         assert result[0]["provider"] == "ok"
@@ -209,7 +209,7 @@ class TestReadHistory:
         hf.write_text(
             f'\n{json.dumps({"provider": "a", "ts": now})}\n\n'
         )
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = read_history()
         assert len(result) == 1
 
@@ -231,7 +231,7 @@ class TestGetHistoryStats:
 
     def test_no_file(self, tmp_path):
         hf = tmp_path / "nope.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats()
         assert stats == {"total": 0}
 
@@ -262,7 +262,7 @@ class TestGetHistoryStats:
             },
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats()
 
         assert stats["total"] == 3
@@ -283,7 +283,7 @@ class TestGetHistoryStats:
             {"provider": "new", "status": "success", "ts": now - 60, "source": "d"},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats(hours=1)
         assert stats["total"] == 1
 
@@ -295,7 +295,7 @@ class TestGetHistoryStats:
             {"provider": "a", "status": "success", "duration_seconds": 20, "ts": now},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats()
         assert stats["by_provider"]["a"]["avg_duration"] == 15.0
 
@@ -307,14 +307,14 @@ class TestGetTrends:
 
     def test_no_file(self, tmp_path):
         hf = tmp_path / "nope.jsonl"
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends()
         assert result["buckets"] == []
 
     def test_empty_file(self, tmp_path):
         hf = tmp_path / "h.jsonl"
         hf.write_text("")
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends()
         assert result["buckets"] == []
 
@@ -330,7 +330,7 @@ class TestGetTrends:
             },
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         assert result["total_entries"] == 1
         assert len(result["buckets"]) > 0
@@ -347,7 +347,7 @@ class TestGetTrends:
             {"provider": "a", "status": "error", "ts": now - 30},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         active = [b for b in result["buckets"] if b["count"] > 0]
         assert active[0]["error"] == 1
@@ -361,7 +361,7 @@ class TestGetTrends:
             {"provider": "gemini", "status": "success", "ts": now - 20},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         active = [b for b in result["buckets"] if b["count"] > 0]
         assert len(active) == 1
@@ -375,7 +375,7 @@ class TestGetTrends:
             f'{json.dumps({"provider": "a", "status": "success", "ts": now - 30})}\n'
             "not json\n"
         )
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         assert result["total_entries"] == 1
 
@@ -385,7 +385,7 @@ class TestGetTrends:
         hf.write_text(
             f'\n{json.dumps({"provider": "a", "status": "success", "ts": now - 30})}\n\n'
         )
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         assert result["total_entries"] == 1
 
@@ -393,7 +393,7 @@ class TestGetTrends:
         hf = tmp_path / "h.jsonl"
         hf.write_text("data\n")
         with (
-            patch("modelmux.history._history_file", return_value=hf),
+            patch("vyane.history._history_file", return_value=hf),
             patch("builtins.open", side_effect=OSError("fail")),
         ):
             result = get_trends(hours=1)
@@ -412,7 +412,7 @@ class TestGetTrends:
             },
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             result = get_trends(hours=1)
         active = [b for b in result["buckets"] if b["count"] > 0]
         assert len(active) == 1
@@ -433,8 +433,8 @@ class TestGetTrends:
         ]
         self._write_entries(hf, entries)
         with (
-            patch("modelmux.history._history_file", return_value=hf),
-            patch("modelmux.costs.estimate_cost", side_effect=Exception("pricing error")),
+            patch("vyane.history._history_file", return_value=hf),
+            patch("vyane.costs.estimate_cost", side_effect=Exception("pricing error")),
         ):
             result = get_trends(hours=1)
         # Should not crash, just skip cost
@@ -446,8 +446,8 @@ class TestLogResultEdgeCases:
         hf = tmp_path / "history.jsonl"
         mock_invalidate = MagicMock()
         with (
-            patch("modelmux.history._history_file", return_value=hf),
-            patch("modelmux.routing.invalidate_routing_cache", mock_invalidate),
+            patch("vyane.history._history_file", return_value=hf),
+            patch("vyane.routing.invalidate_routing_cache", mock_invalidate),
         ):
             log_result({"provider": "codex"})
         mock_invalidate.assert_called_once()
@@ -455,8 +455,8 @@ class TestLogResultEdgeCases:
     def test_notification_failure_handled(self, tmp_path):
         hf = tmp_path / "history.jsonl"
         with (
-            patch("modelmux.history._history_file", return_value=hf),
-            patch("modelmux.notifications.notify_dispatch", side_effect=Exception("webhook fail")),
+            patch("vyane.history._history_file", return_value=hf),
+            patch("vyane.notifications.notify_dispatch", side_effect=Exception("webhook fail")),
         ):
             # Should not raise
             log_result({"provider": "codex"})
@@ -465,7 +465,7 @@ class TestLogResultEdgeCases:
     def test_oserror_handled(self, tmp_path):
         hf = tmp_path / "history.jsonl"
         with (
-            patch("modelmux.history._history_file", return_value=hf),
+            patch("vyane.history._history_file", return_value=hf),
             patch("builtins.open", side_effect=OSError("disk full")),
         ):
             # Should not raise
@@ -484,7 +484,7 @@ class TestGetHistoryStatsEdgeCases:
             f'{json.dumps({"provider": "a", "status": "success", "ts": now, "duration_seconds": 1.0})}\n'
             "bad json\n"
         )
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats()
         assert stats["total"] == 1
 
@@ -494,7 +494,7 @@ class TestGetHistoryStatsEdgeCases:
         hf.write_text(
             f'\n{json.dumps({"provider": "a", "status": "success", "ts": now, "duration_seconds": 1.0})}\n\n'
         )
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats()
         assert stats["total"] == 1
 
@@ -502,7 +502,7 @@ class TestGetHistoryStatsEdgeCases:
         hf = tmp_path / "h.jsonl"
         hf.write_text("data\n")
         with (
-            patch("modelmux.history._history_file", return_value=hf),
+            patch("vyane.history._history_file", return_value=hf),
             patch("builtins.open", side_effect=OSError("fail")),
         ):
             stats = get_history_stats()
@@ -521,7 +521,7 @@ class TestGetHistoryStatsEdgeCases:
             },
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats(include_costs=True)
         assert stats["total"] == 1
         assert "costs" in stats
@@ -533,7 +533,7 @@ class TestGetHistoryStatsEdgeCases:
             {"provider": "codex", "status": "success", "ts": now, "duration_seconds": 1.0},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats(include_costs=True)
         assert stats["total"] == 1
         assert "costs" not in stats  # no token usage entries
@@ -546,7 +546,7 @@ class TestGetHistoryStatsEdgeCases:
             {"provider": "new", "status": "success", "ts": now, "duration_seconds": 2.0},
         ]
         self._write_entries(hf, entries)
-        with patch("modelmux.history._history_file", return_value=hf):
+        with patch("vyane.history._history_file", return_value=hf):
             stats = get_history_stats(hours=1)
         assert stats["total"] == 1
         assert "new" in stats["by_provider"]
@@ -558,7 +558,7 @@ class TestReadHistoryEdgeCases:
         hf = tmp_path / "h.jsonl"
         hf.write_text("data\n")
         with (
-            patch("modelmux.history._history_file", return_value=hf),
+            patch("vyane.history._history_file", return_value=hf),
             patch("builtins.open", side_effect=OSError("read error")),
         ):
             result = read_history()

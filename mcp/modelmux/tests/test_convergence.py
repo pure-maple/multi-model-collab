@@ -1,6 +1,6 @@
 """Tests for the convergence detection module."""
 
-from modelmux.a2a.convergence import (
+from vyane.a2a.convergence import (
     _check_hard_limits,
     _check_stability,
     _check_structured_signals,
@@ -8,7 +8,7 @@ from modelmux.a2a.convergence import (
     build_judge_prompt,
     evaluate,
 )
-from modelmux.a2a.types import (
+from vyane.a2a.types import (
     Artifact,
     CollaborationTask,
     ConvergenceDecision,

@@ -1,4 +1,4 @@
-"""Tests for the modelmux web dashboard."""
+"""Tests for the Vyane web dashboard."""
 
 import json
 from unittest.mock import patch
@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from starlette.testclient import TestClient
 
-from modelmux.dashboard import create_app
+from vyane.dashboard import create_app
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ class TestDashboardIndex:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "modelmux Dashboard" in resp.text
+        assert "Vyane Dashboard" in resp.text
 
     def test_index_contains_api_calls(self, client):
         resp = client.get("/")
@@ -33,7 +33,7 @@ class TestDashboardIndex:
 
 class TestApiStatus:
     def test_empty_status(self, client):
-        with patch("modelmux.status.list_active", return_value=[]):
+        with patch("vyane.status.list_active", return_value=[]):
             resp = client.get("/api/status")
         assert resp.status_code == 200
         data = resp.json()
@@ -41,7 +41,7 @@ class TestApiStatus:
         assert data["count"] == 0
 
     def test_status_with_active_dispatch(self, client):
-        from modelmux.status import DispatchStatus
+        from vyane.status import DispatchStatus
 
         mock_dispatch = DispatchStatus(
             run_id="test-123",
@@ -51,7 +51,7 @@ class TestApiStatus:
             started_at=1000000.0,
         )
         with patch(
-            "modelmux.status.list_active", return_value=[mock_dispatch]
+            "vyane.status.list_active", return_value=[mock_dispatch]
         ):
             resp = client.get("/api/status")
         data = resp.json()
@@ -62,7 +62,7 @@ class TestApiStatus:
 
 class TestApiHistory:
     def test_empty_history(self, client):
-        with patch("modelmux.history.read_history", return_value=[]):
+        with patch("vyane.history.read_history", return_value=[]):
             resp = client.get("/api/history")
         data = resp.json()
         assert data["count"] == 0
@@ -72,7 +72,7 @@ class TestApiHistory:
         mock_entries = [
             {"ts": 1000, "provider": "gemini", "status": "success", "task": "test"},
         ]
-        with patch("modelmux.history.read_history", return_value=mock_entries):
+        with patch("vyane.history.read_history", return_value=mock_entries):
             resp = client.get("/api/history?limit=5&provider=gemini")
         data = resp.json()
         assert data["count"] == 1
@@ -88,7 +88,7 @@ class TestApiHistory:
             captured["hours"] = query.hours
             return []
 
-        with patch("modelmux.history.read_history", side_effect=mock_read):
+        with patch("vyane.history.read_history", side_effect=mock_read):
             client.get("/api/history?limit=5&provider=codex&hours=24")
         assert captured["limit"] == 5
         assert captured["provider"] == "codex"
@@ -98,7 +98,7 @@ class TestApiHistory:
 class TestApiStats:
     def test_empty_stats(self, client):
         with patch(
-            "modelmux.history.get_history_stats",
+            "vyane.history.get_history_stats",
             return_value={"total": 0},
         ):
             resp = client.get("/api/stats")
@@ -120,7 +120,7 @@ class TestApiStats:
             "by_source": {"dispatch": 30, "broadcast": 12},
         }
         with patch(
-            "modelmux.history.get_history_stats", return_value=mock_stats
+            "vyane.history.get_history_stats", return_value=mock_stats
         ):
             resp = client.get("/api/stats")
         data = resp.json()
@@ -149,7 +149,7 @@ class TestApiProviders:
 class TestApiCosts:
     def test_empty_costs(self, client):
         with patch(
-            "modelmux.history.get_history_stats",
+            "vyane.history.get_history_stats",
             return_value={"total": 0},
         ):
             resp = client.get("/api/costs")
@@ -159,7 +159,7 @@ class TestApiCosts:
 
     def test_costs_includes_pricing_table(self, client):
         with patch(
-            "modelmux.history.get_history_stats",
+            "vyane.history.get_history_stats",
             return_value={"total": 0},
         ):
             resp = client.get("/api/costs")
@@ -172,7 +172,7 @@ class TestApiCosts:
 class TestApiTrends:
     def test_empty_trends(self, client):
         with patch(
-            "modelmux.history.get_trends",
+            "vyane.history.get_trends",
             return_value={"buckets": [], "hours": 24, "bucket_minutes": 60},
         ):
             resp = client.get("/api/trends")
@@ -198,7 +198,7 @@ class TestApiTrends:
             "bucket_minutes": 60,
             "total_entries": 5,
         }
-        with patch("modelmux.history.get_trends", return_value=mock_trends):
+        with patch("vyane.history.get_trends", return_value=mock_trends):
             resp = client.get("/api/trends?hours=24&bucket=60")
         data = resp.json()
         assert len(data["buckets"]) == 1
@@ -213,7 +213,7 @@ class TestApiTrends:
             captured["bucket_minutes"] = bucket_minutes
             return {"buckets": [], "hours": hours, "bucket_minutes": bucket_minutes}
 
-        with patch("modelmux.history.get_trends", side_effect=mock_trends):
+        with patch("vyane.history.get_trends", side_effect=mock_trends):
             client.get("/api/trends?hours=48&bucket=30")
         assert captured["hours"] == 48.0
         assert captured["bucket_minutes"] == 30
@@ -221,7 +221,7 @@ class TestApiTrends:
 
 class TestApiCollaborations:
     def test_empty_collaborations(self, client):
-        with patch("modelmux.history.read_history", return_value=[]):
+        with patch("vyane.history.read_history", return_value=[]):
             resp = client.get("/api/collaborations")
         data = resp.json()
         assert data["count"] == 0
@@ -258,7 +258,7 @@ class TestApiCollaborations:
                 ],
             }
         ]
-        with patch("modelmux.history.read_history", return_value=mock_entries):
+        with patch("vyane.history.read_history", return_value=mock_entries):
             resp = client.get("/api/collaborations")
         data = resp.json()
         assert data["count"] == 1
@@ -276,7 +276,7 @@ class TestApiCollaborations:
             captured["limit"] = query.limit
             return []
 
-        with patch("modelmux.history.read_history", side_effect=mock_read):
+        with patch("vyane.history.read_history", side_effect=mock_read):
             client.get("/api/collaborations?limit=3")
         assert captured["source"] == "collaborate"
         assert captured["limit"] == 3
@@ -284,49 +284,49 @@ class TestApiCollaborations:
 
 class TestParamClamping:
     def test_clamp_int_normal(self):
-        from modelmux.dashboard import _clamp_int
+        from vyane.dashboard import _clamp_int
 
         assert _clamp_int("50", 20) == 50
 
     def test_clamp_int_negative(self):
-        from modelmux.dashboard import _clamp_int
+        from vyane.dashboard import _clamp_int
 
         assert _clamp_int("-1", 20) == 1
 
     def test_clamp_int_overflow(self):
-        from modelmux.dashboard import _clamp_int
+        from vyane.dashboard import _clamp_int
 
         assert _clamp_int("999999", 20) == 10000
 
     def test_clamp_int_invalid(self):
-        from modelmux.dashboard import _clamp_int
+        from vyane.dashboard import _clamp_int
 
         assert _clamp_int("abc", 20) == 20
 
     def test_clamp_float_normal(self):
-        from modelmux.dashboard import _clamp_float
+        from vyane.dashboard import _clamp_float
 
         assert _clamp_float("12.5", 0.0) == 12.5
 
     def test_clamp_float_negative(self):
-        from modelmux.dashboard import _clamp_float
+        from vyane.dashboard import _clamp_float
 
         assert _clamp_float("-5", 0.0) == 0.0
 
     def test_clamp_float_overflow(self):
-        from modelmux.dashboard import _clamp_float
+        from vyane.dashboard import _clamp_float
 
         assert _clamp_float("99999", 24.0) == 8760.0
 
     def test_clamp_float_invalid(self):
-        from modelmux.dashboard import _clamp_float
+        from vyane.dashboard import _clamp_float
 
         assert _clamp_float("nan-value", 24.0) == 24.0
 
 
 class TestApiFeedback:
     def test_empty_feedback(self, client):
-        with patch("modelmux.feedback.read_feedback", return_value=[]):
+        with patch("vyane.feedback.read_feedback", return_value=[]):
             resp = client.get("/api/feedback")
         data = resp.json()
         assert data["total_entries"] == 0
@@ -339,8 +339,8 @@ class TestApiFeedback:
             {"ts": 1001, "provider": "codex", "rating": 5, "category": "code"},
             {"ts": 1002, "provider": "gemini", "rating": 3, "category": "design"},
         ]
-        with patch("modelmux.feedback.read_feedback", return_value=mock_entries):
-            with patch("modelmux.feedback.feedback_scores", return_value={"codex": 0.8, "gemini": 0.6}):
+        with patch("vyane.feedback.read_feedback", return_value=mock_entries):
+            with patch("vyane.feedback.feedback_scores", return_value={"codex": 0.8, "gemini": 0.6}):
                 resp = client.get("/api/feedback")
         data = resp.json()
         assert data["total_entries"] == 3
@@ -357,15 +357,15 @@ class TestApiFeedback:
             captured["hours"] = hours
             return []
 
-        with patch("modelmux.feedback.read_feedback", side_effect=mock_read):
+        with patch("vyane.feedback.read_feedback", side_effect=mock_read):
             client.get("/api/feedback?hours=48")
         assert captured["hours"] == 48.0
 
     def test_feedback_recent_capped(self, client):
         """Recent entries capped to last 20."""
         entries = [{"ts": i, "provider": "codex", "rating": 3, "category": ""} for i in range(50)]
-        with patch("modelmux.feedback.read_feedback", return_value=entries):
-            with patch("modelmux.feedback.feedback_scores", return_value={"codex": 0.5}):
+        with patch("vyane.feedback.read_feedback", return_value=entries):
+            with patch("vyane.feedback.feedback_scores", return_value={"codex": 0.5}):
                 resp = client.get("/api/feedback")
         data = resp.json()
         assert len(data["recent"]) == 20
@@ -375,12 +375,12 @@ class TestCollectDashboardData:
     """Test the _collect_dashboard_data helper used by SSE."""
 
     def test_collect_returns_all_sections(self):
-        from modelmux.dashboard import _collect_dashboard_data
+        from vyane.dashboard import _collect_dashboard_data
 
         with (
-            patch("modelmux.status.list_active", return_value=[]),
-            patch("modelmux.history.get_history_stats", return_value={"total": 0}),
-            patch("modelmux.history.read_history", return_value=[]),
+            patch("vyane.status.list_active", return_value=[]),
+            patch("vyane.history.get_history_stats", return_value={"total": 0}),
+            patch("vyane.history.read_history", return_value=[]),
         ):
             data = _collect_dashboard_data()
         assert "active" in data
@@ -388,8 +388,8 @@ class TestCollectDashboardData:
         assert "history" in data
 
     def test_collect_includes_active_dispatches(self):
-        from modelmux.dashboard import _collect_dashboard_data
-        from modelmux.status import DispatchStatus
+        from vyane.dashboard import _collect_dashboard_data
+        from vyane.status import DispatchStatus
 
         mock_dispatch = DispatchStatus(
             run_id="sse-1",
@@ -399,10 +399,10 @@ class TestCollectDashboardData:
             started_at=1000.0,
         )
         with (
-            patch("modelmux.status.list_active", return_value=[mock_dispatch]),
-            patch("modelmux.history.get_history_stats", return_value={"total": 5}),
+            patch("vyane.status.list_active", return_value=[mock_dispatch]),
+            patch("vyane.history.get_history_stats", return_value={"total": 5}),
             patch(
-                "modelmux.history.read_history",
+                "vyane.history.read_history",
                 return_value=[{"ts": 1, "provider": "codex", "status": "success"}],
             ),
         ):

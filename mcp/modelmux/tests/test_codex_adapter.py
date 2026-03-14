@@ -3,7 +3,7 @@
 import json
 import os
 
-from modelmux.adapters.codex import (
+from vyane.adapters.codex import (
     RECONNECT_RE,
     CodexAdapter,
     _create_ascii_symlink,
@@ -346,7 +346,7 @@ class TestParseTokenUsage:
         assert usage.total_tokens == 2
 
     def test_in_registry(self):
-        from modelmux.adapters import ADAPTERS
+        from vyane.adapters import ADAPTERS
 
         assert "codex" in ADAPTERS
         assert ADAPTERS["codex"] is CodexAdapter

@@ -3,7 +3,7 @@
 import json
 from unittest import mock
 
-from modelmux.config import (
+from vyane.config import (
     CategoryBinding,
     MuxConfig,
     Profile,
@@ -11,7 +11,7 @@ from modelmux.config import (
     _parse_profile,
     get_category_binding,
 )
-from modelmux.routing import IntentCategory
+from vyane.routing import IntentCategory
 
 
 # ── Parsing ──

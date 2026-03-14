@@ -52,7 +52,14 @@ from modelmux.orchestrate import (
 from modelmux.orchestrate_store import OrchestrateStore
 from modelmux.policy import check_policy, load_policy
 from modelmux.routing import classify_intent, smart_route
-from modelmux.status import DispatchStatus, list_active, remove_status, write_status
+from modelmux.security import ThreatLevel, scan_task
+from modelmux.status import (
+    DispatchStatus,
+    list_active,
+    read_status,
+    remove_status,
+    write_status,
+)
 from modelmux.workflow import (
     BUILTIN_WORKFLOWS,
     Workflow,
@@ -77,6 +84,9 @@ mcp = FastMCP(
 # Adapter instances (lazy-initialized)
 _adapter_cache: dict[str, BaseAdapter] = {}
 _orchestrate_store: OrchestrateStore | None = None
+
+# Async dispatch task references (for cancellation support)
+_async_tasks: dict[str, asyncio.Task] = {}  # run_id → asyncio.Task
 
 
 def _auto_route(
@@ -485,6 +495,7 @@ async def mux_dispatch(
     failover: bool = True,
     max_retries: int = 1,
     auto_decompose: bool = False,
+    async_mode: bool = False,
 ) -> str:
     """Dispatch a task to an AI model CLI and return the result.
 
@@ -517,6 +528,9 @@ async def mux_dispatch(
         auto_decompose: Automatically decompose complex tasks into subtasks,
             route each to the best-suited provider, and merge results.
             Uses the selected provider as planner. Default False.
+        async_mode: Run dispatch in background and return immediately with
+            a run_id (default False). Use mux_task_status to poll for
+            results, and mux_task_cancel to cancel a running task.
     """
     _ensure_custom_providers_loaded()
 
@@ -580,6 +594,38 @@ async def mux_dispatch(
             },
             indent=2,
         )
+
+    # Security scan — detect prompt injection and credential leaks
+    security_result = scan_task(task, policy_overrides=policy.security)
+    if not security_result.passed:
+        from modelmux.audit import log_security_event
+
+        log_security_event(security_result, task_summary=task[:100])
+        if security_result.action == ThreatLevel.BLOCK:
+            return json.dumps(
+                {
+                    "run_id": "",
+                    "provider": actual_provider,
+                    "status": "blocked",
+                    "error": (
+                        f"Security check failed: "
+                        f"{security_result.findings[0].category}"
+                    ),
+                    "findings": [
+                        {
+                            "category": f.category,
+                            "pattern": f.pattern_name,
+                        }
+                        for f in security_result.findings
+                    ],
+                },
+                indent=2,
+            )
+    elif security_result.findings:
+        # WARN or LOG_ONLY level — log but continue
+        from modelmux.audit import log_security_event
+
+        log_security_event(security_result, task_summary=task[:100])
 
     adapter = _get_adapter(actual_provider)
 

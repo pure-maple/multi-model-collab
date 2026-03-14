@@ -108,6 +108,45 @@ def count_recent(hours: float = 1.0) -> int:
     return len(read_recent(hours))
 
 
+def log_security_event(
+    result: object,
+    task_summary: str,
+) -> None:
+    """Log a security finding to the audit JSONL file.
+
+    Args:
+        result: A SecurityResult object (imported lazily to avoid circular deps).
+        task_summary: First ~100 chars of the task for context.
+    """
+    import datetime
+
+    try:
+        d = _audit_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        findings_data = []
+        for f in getattr(result, "findings", []):
+            findings_data.append({
+                "category": f.category,
+                "pattern_name": f.pattern_name,
+                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                "matched_text": f.matched_text,
+            })
+        entry = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "event": "security_scan",
+            "passed": getattr(result, "passed", True),
+            "action": getattr(result, "action", "log"),
+            "task_summary": task_summary[:100],
+            "findings": findings_data,
+        }
+        if hasattr(entry["action"], "value"):
+            entry["action"] = entry["action"].value
+        with open(_audit_file(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        logger.debug("Failed to write security audit entry", exc_info=True)
+
+
 def get_audit_stats() -> dict:
     """Get summary stats from the audit log."""
     path = _audit_file()

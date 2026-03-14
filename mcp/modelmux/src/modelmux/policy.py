@@ -42,6 +42,9 @@ class Policy:
     max_calls_per_hour: int = 0
     max_calls_per_day: int = 0
 
+    # Security scanning config (raw dict from policy.json "security" section)
+    security: dict | None = field(default=None, repr=False)
+
 
 @dataclass
 class PolicyResult:
@@ -77,6 +80,7 @@ def _parse_policy(data: dict[str, Any]) -> Policy:
         max_timeout=data.get("max_timeout", 0),
         max_calls_per_hour=data.get("max_calls_per_hour", 0),
         max_calls_per_day=data.get("max_calls_per_day", 0),
+        security=data.get("security"),
     )
 
 

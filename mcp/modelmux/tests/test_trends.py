@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.history import get_trends
+from vyane.history import get_trends
 
 
 @pytest.fixture
 def history_dir(tmp_path):
     """Create a temp history file."""
-    config_dir = tmp_path / ".config" / "modelmux"
+    config_dir = tmp_path / ".config" / "vyane"
     config_dir.mkdir(parents=True)
     return config_dir
 
@@ -29,14 +29,14 @@ def _write_history(history_dir: Path, entries: list[dict]) -> Path:
 class TestGetTrendsEmpty:
     def test_no_file(self, tmp_path):
         fake_path = tmp_path / "nonexistent" / "history.jsonl"
-        with patch("modelmux.history._history_file", return_value=fake_path):
+        with patch("vyane.history._history_file", return_value=fake_path):
             result = get_trends(hours=24)
         assert result["buckets"] == []
 
     def test_empty_file(self, history_dir):
         path = history_dir / "history.jsonl"
         path.write_text("")
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=24)
         assert result["buckets"] == []
 
@@ -47,7 +47,7 @@ class TestGetTrendsEmpty:
             {"ts": old_ts, "provider": "codex", "status": "success", "duration_seconds": 5},
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=24)
         assert result["buckets"] == [] or all(b["count"] == 0 for b in result["buckets"])
 
@@ -64,7 +64,7 @@ class TestGetTrendsWithData:
             },
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=2, bucket_minutes=60)
         assert result["total_entries"] == 1
         filled = [b for b in result["buckets"] if b["count"] > 0]
@@ -85,7 +85,7 @@ class TestGetTrendsWithData:
             {"ts": base + 20, "provider": "codex", "status": "error", "duration_seconds": 5},
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=1, bucket_minutes=60)
         filled = [b for b in result["buckets"] if b["count"] > 0]
         assert len(filled) == 1
@@ -105,7 +105,7 @@ class TestGetTrendsWithData:
             {"ts": now - 600, "provider": "claude", "status": "error", "duration_seconds": 3},
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=4, bucket_minutes=60)
         filled = [b for b in result["buckets"] if b["count"] > 0]
         assert len(filled) >= 2  # Should be in different buckets
@@ -130,7 +130,7 @@ class TestGetTrendsWithData:
             },
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=4, bucket_minutes=60)
         # Cumulative cost should be non-decreasing
         costs = [b["cumulative_cost"] for b in result["buckets"]]
@@ -147,7 +147,7 @@ class TestGetTrendsBucketSize:
             {"ts": now - 300, "provider": "codex", "status": "success", "duration_seconds": 5},
         ]
         path = _write_history(history_dir, entries)
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=1, bucket_minutes=15)
         # 1 hour / 15 min = ~4-5 buckets
         assert len(result["buckets"]) >= 4
@@ -156,7 +156,7 @@ class TestGetTrendsBucketSize:
     def test_returns_metadata(self, history_dir):
         path = history_dir / "history.jsonl"
         path.write_text("")
-        with patch("modelmux.history._history_file", return_value=path):
+        with patch("vyane.history._history_file", return_value=path):
             result = get_trends(hours=12, bucket_minutes=30)
         assert result["hours"] == 12
         assert result["bucket_minutes"] == 30

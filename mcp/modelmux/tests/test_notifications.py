@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modelmux.notifications import (
+from vyane.notifications import (
     NotificationConfig,
     _build_payload,
     _detect_format,
@@ -54,7 +54,7 @@ class TestBuildPayload:
     def test_generic_format(self):
         result = {"provider": "ollama", "status": "success", "duration_seconds": 2}
         payload = _build_payload(result, "hello", "dispatch", "generic")
-        assert payload["event"] == "modelmux.dispatch.success"
+        assert payload["event"] == "vyane.dispatch.success"
         assert payload["provider"] == "ollama"
 
     def test_task_truncation(self):
@@ -73,7 +73,7 @@ class TestLoadNotificationConfig:
     def test_empty_when_no_config(self):
         with patch.dict("os.environ", {}, clear=True):
             with patch(
-                "modelmux.config._find_config_file", return_value=None
+                "vyane.config._find_config_file", return_value=None
             ):
                 config = load_notification_config()
         assert config.webhook_url == ""
@@ -82,7 +82,7 @@ class TestLoadNotificationConfig:
 class TestNotifyDispatch:
     def test_no_url_does_nothing(self):
         with patch(
-            "modelmux.notifications.load_notification_config",
+            "vyane.notifications.load_notification_config",
             return_value=NotificationConfig(),
         ):
             # Should not raise
@@ -91,10 +91,10 @@ class TestNotifyDispatch:
     def test_sends_webhook_on_success(self):
         config = NotificationConfig(webhook_url="https://test.com/hook")
         with patch(
-            "modelmux.notifications.load_notification_config",
+            "vyane.notifications.load_notification_config",
             return_value=config,
         ):
-            with patch("modelmux.notifications._send_webhook") as mock_send:
+            with patch("vyane.notifications._send_webhook") as mock_send:
                 with patch("threading.Thread") as mock_thread:
                     mock_instance = MagicMock()
                     mock_thread.return_value = mock_instance
@@ -111,7 +111,7 @@ class TestNotifyDispatch:
             events=["error"],
         )
         with patch(
-            "modelmux.notifications.load_notification_config",
+            "vyane.notifications.load_notification_config",
             return_value=config,
         ):
             with patch("threading.Thread") as mock_thread:
@@ -127,7 +127,7 @@ class TestNotifyDispatch:
             events=["error"],
         )
         with patch(
-            "modelmux.notifications.load_notification_config",
+            "vyane.notifications.load_notification_config",
             return_value=config,
         ):
             with patch("threading.Thread") as mock_thread:
@@ -144,9 +144,9 @@ class TestHistoryIntegration:
     """Verify log_result triggers notification."""
 
     def test_log_result_calls_notify(self, tmp_path):
-        with patch("modelmux.history._history_file", return_value=tmp_path / "h.jsonl"):
-            with patch("modelmux.notifications.notify_dispatch") as mock_notify:
-                from modelmux.history import log_result
+        with patch("vyane.history._history_file", return_value=tmp_path / "h.jsonl"):
+            with patch("vyane.notifications.notify_dispatch") as mock_notify:
+                from vyane.history import log_result
 
                 log_result({"provider": "codex", "status": "success"}, task="test")
                 mock_notify.assert_called_once_with(

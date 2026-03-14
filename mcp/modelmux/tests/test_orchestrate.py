@@ -2,7 +2,7 @@
 
 import pytest
 
-from modelmux.orchestrate import (
+from vyane.orchestrate import (
     OrchestrateError,
     TaskState,
     apply_action,

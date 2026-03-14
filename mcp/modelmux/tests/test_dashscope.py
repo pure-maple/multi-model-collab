@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modelmux.adapters.dashscope import (
+from vyane.adapters.dashscope import (
     CODING_PLAN_MODELS,
     DEFAULT_API_KEY_ENV,
     DEFAULT_BASE_URL,
@@ -49,7 +49,7 @@ class TestCheckAvailable:
     def test_not_available_without_key(self):
         adapter = DashScopeAdapter()
         with patch.dict("os.environ", {}, clear=True):
-            with patch("modelmux.config.load_config", side_effect=Exception):
+            with patch("vyane.config.load_config", side_effect=Exception):
                 assert adapter.check_available() is False
 
     def test_available_with_custom_env(self):
@@ -91,7 +91,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(prompt="hello")
 
         assert result.status == "success"
@@ -115,7 +115,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(prompt="hello")
 
         assert result.status == "error"
@@ -133,7 +133,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(prompt="hello", timeout=10)
 
         assert result.status == "timeout"
@@ -153,7 +153,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(prompt="hello")
 
         assert result.status == "error"
@@ -176,7 +176,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(
                     prompt="hello",
                     extra_args={"model": "kimi-k2.5"},
@@ -205,7 +205,7 @@ class TestRun:
 
         # No env var set, but env_overrides provides the key
         with patch.dict("os.environ", {}, clear=True):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 result = await adapter.run(
                     prompt="hello",
                     env_overrides={"DASHSCOPE_CODING_API_KEY": "sk-from-profile"},
@@ -235,7 +235,7 @@ class TestRun:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch.dict("os.environ", {"DASHSCOPE_CODING_API_KEY": "sk-test"}):
-            with patch("modelmux.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
+            with patch("vyane.adapters.dashscope.httpx.AsyncClient", return_value=mock_client):
                 await adapter.run(
                     prompt="hello",
                     on_progress=lambda msg: progress_messages.append(msg),

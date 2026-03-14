@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.status import (
+from vyane.status import (
     DispatchStatus,
     _safe_filename,
     list_active,
@@ -42,7 +42,7 @@ class TestSafeFilename:
 
 class TestWriteAndRemoveStatus:
     def test_write_creates_file(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             status = DispatchStatus(
                 run_id="test1",
                 provider="codex",
@@ -59,7 +59,7 @@ class TestWriteAndRemoveStatus:
         assert data["status"] == "running"
 
     def test_remove_deletes_file(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             status = DispatchStatus(run_id="rm1", provider="test")
             write_status(status)
             assert (tmp_path / "rm1.json").exists()
@@ -68,23 +68,23 @@ class TestWriteAndRemoveStatus:
             assert not (tmp_path / "rm1.json").exists()
 
     def test_remove_missing_file_ok(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             remove_status("nonexistent")  # Should not raise
 
     def test_write_empty_run_id_skipped(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             write_status(DispatchStatus(run_id="", provider="test"))
         assert len(list(tmp_path.glob("*.json"))) == 0
 
 
 class TestListActive:
     def test_empty_dir(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             assert list_active() == []
 
     def test_nonexistent_dir(self, tmp_path):
         with patch(
-            "modelmux.status._status_dir",
+            "vyane.status._status_dir",
             return_value=tmp_path / "nonexistent",
         ):
             assert list_active() == []
@@ -100,7 +100,7 @@ class TestListActive:
         }
         (tmp_path / "active1.json").write_text(json.dumps(data))
 
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             result = list_active()
 
         assert len(result) == 1
@@ -115,7 +115,7 @@ class TestListActive:
         }
         (tmp_path / "old1.json").write_text(json.dumps(stale_data))
 
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             result = list_active()
 
         assert len(result) == 0
@@ -131,7 +131,7 @@ class TestListActive:
             }
             (tmp_path / f"s{i}.json").write_text(json.dumps(data))
 
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             result = list_active()
 
         assert len(result) == 3
@@ -148,7 +148,7 @@ class TestListActive:
         }
         (tmp_path / "good.json").write_text(json.dumps(good_data))
 
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             result = list_active()
 
         assert len(result) == 1

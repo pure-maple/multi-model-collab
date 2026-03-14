@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from modelmux.workflow import (
+from vyane.workflow import (
     PersistentStep,
     StepState,
     Workflow,

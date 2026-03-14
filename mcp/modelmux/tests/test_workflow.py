@@ -2,7 +2,7 @@
 
 import pytest
 
-from modelmux.workflow import (
+from vyane.workflow import (
     BUILTIN_WORKFLOWS,
     Workflow,
     WorkflowStep,

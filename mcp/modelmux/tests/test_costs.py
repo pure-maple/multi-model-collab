@@ -2,11 +2,11 @@
 
 import json
 
-from modelmux.adapters.base import TokenUsage
-from modelmux.adapters.codex import CodexAdapter
-from modelmux.adapters.gemini import GeminiAdapter
-from modelmux.adapters.ollama import OllamaAdapter
-from modelmux.costs import CostEstimate, aggregate_costs, estimate_cost
+from vyane.adapters.base import TokenUsage
+from vyane.adapters.codex import CodexAdapter
+from vyane.adapters.gemini import GeminiAdapter
+from vyane.adapters.ollama import OllamaAdapter
+from vyane.costs import CostEstimate, aggregate_costs, estimate_cost
 
 # ── TokenUsage dataclass ──
 
@@ -262,7 +262,7 @@ class TestAggregateCosts:
 
 class TestAdapterResultTokenUsage:
     def test_to_dict_with_token_usage(self):
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         result = AdapterResult(
             run_id="abc",
@@ -279,7 +279,7 @@ class TestAdapterResultTokenUsage:
         assert d["token_usage"]["input_tokens"] == 1000
 
     def test_to_dict_without_token_usage(self):
-        from modelmux.adapters.base import AdapterResult
+        from vyane.adapters.base import AdapterResult
 
         result = AdapterResult(
             run_id="abc",
@@ -300,7 +300,7 @@ class TestDashScopeTokenUsage:
 
         import httpx
 
-        from modelmux.adapters.dashscope import DashScopeAdapter
+        from vyane.adapters.dashscope import DashScopeAdapter
 
         adapter = DashScopeAdapter()
 
@@ -353,7 +353,7 @@ class TestDashScopeTokenUsage:
 
         import httpx
 
-        from modelmux.adapters.dashscope import DashScopeAdapter
+        from vyane.adapters.dashscope import DashScopeAdapter
 
         adapter = DashScopeAdapter()
 

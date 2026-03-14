@@ -18,8 +18,8 @@ import json
 import httpx
 import pytest
 
-from modelmux.a2a.http_server import A2AServer
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.a2a.http_server import A2AServer
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 # --- Fake adapter ---
 

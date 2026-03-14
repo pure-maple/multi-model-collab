@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from modelmux.adapters.ollama import OllamaAdapter
+from vyane.adapters.ollama import OllamaAdapter
 
 
 def test_binary_name():
@@ -73,7 +73,7 @@ def test_parse_output_empty():
 
 
 def test_adapter_in_registry():
-    from modelmux.adapters import ADAPTERS
+    from vyane.adapters import ADAPTERS
 
     assert "ollama" in ADAPTERS
     assert ADAPTERS["ollama"] is OllamaAdapter

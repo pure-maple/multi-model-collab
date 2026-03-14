@@ -1,6 +1,6 @@
 """Tests for the adapters __init__ module (registry, custom providers, A2A agents)."""
 
-from modelmux.adapters import (
+from vyane.adapters import (
     ADAPTERS,
     A2ARemoteAdapter,
     GenericAdapter,
@@ -10,7 +10,7 @@ from modelmux.adapters import (
     register_a2a_agent,
     register_custom_provider,
 )
-from modelmux.adapters.base import BaseAdapter
+from vyane.adapters.base import BaseAdapter
 
 
 class TestAdaptersRegistry:

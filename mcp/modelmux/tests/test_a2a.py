@@ -2,7 +2,7 @@
 
 import asyncio
 
-from modelmux.a2a.types import (
+from vyane.a2a.types import (
     Artifact,
     AgentCard,
     CollaborationTask,
@@ -15,15 +15,15 @@ from modelmux.a2a.types import (
     TaskState,
     Turn,
 )
-from modelmux.a2a.context import CollaborationContext
-from modelmux.a2a.convergence import evaluate, _check_structured_signals
-from modelmux.a2a.patterns import (
+from vyane.a2a.context import CollaborationContext
+from vyane.a2a.convergence import evaluate, _check_structured_signals
+from vyane.a2a.patterns import (
     BUILTIN_PATTERNS,
     get_pattern,
     list_patterns,
 )
-from modelmux.a2a.engine import CollaborationEngine, EngineConfig
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.a2a.engine import CollaborationEngine, EngineConfig
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 
 # --- Fake adapter for testing ---
@@ -119,12 +119,12 @@ def test_turn_auto_id():
 
 def test_agent_card_to_dict():
     card = AgentCard(
-        name="modelmux",
+        name="Vyane",
         version="0.18.0",
         skills=[Skill(id="review", name="Review", description="Code review")],
     )
     d = card.to_dict()
-    assert d["name"] == "modelmux"
+    assert d["name"] == "Vyane"
     assert len(d["skills"]) == 1
     assert d["skills"][0]["id"] == "review"
 

@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter
-from modelmux.status import DispatchStatus, read_status, write_status
+from vyane.adapters.base import AdapterResult, BaseAdapter
+from vyane.status import DispatchStatus, read_status, write_status
 
 
 # --- Fake Context for testing MCP tools ---
@@ -99,8 +99,8 @@ def _standard_patches(adapter=None):
         adapter = FakeAdapter()
 
     return (
-        patch("modelmux.server._ensure_custom_providers_loaded"),
-        patch("modelmux.server.load_config", return_value=MagicMock(
+        patch("vyane.server._ensure_custom_providers_loaded"),
+        patch("vyane.server.load_config", return_value=MagicMock(
             active_profile="default",
             profiles={},
             disabled_providers=[],
@@ -108,16 +108,16 @@ def _standard_patches(adapter=None):
             default_provider="codex",
             auto_exclude_caller=True,
         )),
-        patch("modelmux.server._detect_and_build_exclusions", return_value=(
+        patch("vyane.server._detect_and_build_exclusions", return_value=(
             MagicMock(provider="", client_name="test", platform="test"),
             [],
         )),
-        patch("modelmux.server._get_adapter", return_value=adapter),
-        patch("modelmux.server.load_policy"),
-        patch("modelmux.server.check_policy", return_value=MagicMock(allowed=True)),
-        patch("modelmux.server.count_recent", return_value=0),
-        patch("modelmux.server.log_dispatch"),
-        patch("modelmux.server.log_result"),
+        patch("vyane.server._get_adapter", return_value=adapter),
+        patch("vyane.server.load_policy"),
+        patch("vyane.server.check_policy", return_value=MagicMock(allowed=True)),
+        patch("vyane.server.count_recent", return_value=0),
+        patch("vyane.server.log_dispatch"),
+        patch("vyane.server.log_result"),
     )
 
 
@@ -125,7 +125,7 @@ class TestAsyncModeDispatch:
     @pytest.fixture(autouse=True)
     def _reset_loader(self):
         """Reset custom provider loader flag."""
-        from modelmux.server import _ensure_custom_providers_loaded
+        from vyane.server import _ensure_custom_providers_loaded
         _ensure_custom_providers_loaded._done = False
         yield
         _ensure_custom_providers_loaded._done = False
@@ -133,7 +133,7 @@ class TestAsyncModeDispatch:
     @pytest.mark.asyncio
     async def test_async_mode_returns_immediately(self, tmp_path):
         """async_mode=True should return accepted status with run_id."""
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = FakeAdapter(output="hello", delay=0.5)
@@ -142,8 +142,8 @@ class TestAsyncModeDispatch:
         with (
             patches[0], patches[1], patches[2], patches[3],
             patches[4], patches[5], patches[6], patches[7], patches[8],
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
         ):
             result = await mux_dispatch(
                 provider="fake",
@@ -164,7 +164,7 @@ class TestAsyncModeDispatch:
     @pytest.mark.asyncio
     async def test_sync_mode_unchanged(self, tmp_path):
         """async_mode=False (default) returns full result."""
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = FakeAdapter(output="sync result")
@@ -173,8 +173,8 @@ class TestAsyncModeDispatch:
         with (
             patches[0], patches[1], patches[2], patches[3],
             patches[4], patches[5], patches[6], patches[7], patches[8],
-            patch("modelmux.server.write_status"),
-            patch("modelmux.server.remove_status"),
+            patch("vyane.server.write_status"),
+            patch("vyane.server.remove_status"),
         ):
             result = await mux_dispatch(
                 provider="fake",
@@ -192,7 +192,7 @@ class TestAsyncModeDispatch:
     @pytest.mark.asyncio
     async def test_async_task_stores_result(self, tmp_path):
         """Background task should write result to status file."""
-        from modelmux.server import mux_dispatch
+        from vyane.server import mux_dispatch
 
         ctx = FakeContext()
         adapter = FakeAdapter(output="bg result")
@@ -212,8 +212,8 @@ class TestAsyncModeDispatch:
         with (
             patches[0], patches[1], patches[2], patches[3],
             patches[4], patches[5], patches[6], patches[7], patches[8],
-            patch("modelmux.server.write_status", side_effect=capture_write),
-            patch("modelmux.server.remove_status"),
+            patch("vyane.server.write_status", side_effect=capture_write),
+            patch("vyane.server.remove_status"),
         ):
             result = await mux_dispatch(
                 provider="fake",
@@ -237,9 +237,9 @@ class TestAsyncModeDispatch:
 class TestMuxTaskStatus:
     @pytest.mark.asyncio
     async def test_status_not_found(self):
-        from modelmux.server import mux_task_status
+        from vyane.server import mux_task_status
 
-        with patch("modelmux.server.read_status", return_value=None):
+        with patch("vyane.server.read_status", return_value=None):
             result = await mux_task_status(run_id="nonexistent")
 
         data = json.loads(result)
@@ -248,7 +248,7 @@ class TestMuxTaskStatus:
 
     @pytest.mark.asyncio
     async def test_status_running(self):
-        from modelmux.server import mux_task_status
+        from vyane.server import mux_task_status
 
         status = DispatchStatus(
             run_id="abc123",
@@ -261,7 +261,7 @@ class TestMuxTaskStatus:
             output_lines=10,
             async_mode=True,
         )
-        with patch("modelmux.server.read_status", return_value=status):
+        with patch("vyane.server.read_status", return_value=status):
             result = await mux_task_status(run_id="abc123")
 
         data = json.loads(result)
@@ -271,7 +271,7 @@ class TestMuxTaskStatus:
 
     @pytest.mark.asyncio
     async def test_status_completed_without_output(self):
-        from modelmux.server import mux_task_status
+        from vyane.server import mux_task_status
 
         status = DispatchStatus(
             run_id="abc123",
@@ -287,7 +287,7 @@ class TestMuxTaskStatus:
                 "duration_seconds": 9.5,
             },
         )
-        with patch("modelmux.server.read_status", return_value=status):
+        with patch("vyane.server.read_status", return_value=status):
             result = await mux_task_status(run_id="abc123", include_output=False)
 
         data = json.loads(result)
@@ -297,7 +297,7 @@ class TestMuxTaskStatus:
 
     @pytest.mark.asyncio
     async def test_status_completed_with_output(self):
-        from modelmux.server import mux_task_status
+        from vyane.server import mux_task_status
 
         status = DispatchStatus(
             run_id="abc123",
@@ -313,7 +313,7 @@ class TestMuxTaskStatus:
                 "duration_seconds": 9.5,
             },
         )
-        with patch("modelmux.server.read_status", return_value=status):
+        with patch("vyane.server.read_status", return_value=status):
             result = await mux_task_status(run_id="abc123", include_output=True)
 
         data = json.loads(result)
@@ -324,9 +324,9 @@ class TestMuxTaskStatus:
 class TestMuxTaskCancel:
     @pytest.mark.asyncio
     async def test_cancel_not_found(self):
-        from modelmux.server import mux_task_cancel
+        from vyane.server import mux_task_cancel
 
-        with patch("modelmux.server.read_status", return_value=None):
+        with patch("vyane.server.read_status", return_value=None):
             result = await mux_task_cancel(run_id="nonexistent")
 
         data = json.loads(result)
@@ -334,14 +334,14 @@ class TestMuxTaskCancel:
 
     @pytest.mark.asyncio
     async def test_cancel_already_completed(self):
-        from modelmux.server import mux_task_cancel
+        from vyane.server import mux_task_cancel
 
         status = DispatchStatus(
             run_id="done1",
             status="success",
             result={"output": "done"},
         )
-        with patch("modelmux.server.read_status", return_value=status):
+        with patch("vyane.server.read_status", return_value=status):
             result = await mux_task_cancel(run_id="done1")
 
         data = json.loads(result)
@@ -351,8 +351,8 @@ class TestMuxTaskCancel:
     @pytest.mark.asyncio
     async def test_cancel_running_task(self, tmp_path):
         """Cancel a running async task via _async_tasks dict."""
-        import modelmux.server as srv
-        from modelmux.server import mux_dispatch, mux_task_cancel
+        import vyane.server as srv
+        from vyane.server import mux_dispatch, mux_task_cancel
 
         ctx = FakeContext()
         adapter = SlowAdapter()
@@ -376,9 +376,9 @@ class TestMuxTaskCancel:
         with (
             patches[0], patches[1], patches[2], patches[3],
             patches[4], patches[5], patches[6], patches[7], patches[8],
-            patch("modelmux.server.write_status", side_effect=capture_write),
-            patch("modelmux.server.remove_status"),
-            patch("modelmux.server.read_status", side_effect=fake_read_status),
+            patch("vyane.server.write_status", side_effect=capture_write),
+            patch("vyane.server.remove_status"),
+            patch("vyane.server.read_status", side_effect=fake_read_status),
         ):
             result = await mux_dispatch(
                 provider="fake",
@@ -430,7 +430,7 @@ class TestDispatchStatusExtended:
 
 class TestReadStatus:
     def test_read_existing(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             status = DispatchStatus(
                 run_id="rd1",
                 provider="codex",
@@ -446,12 +446,12 @@ class TestReadStatus:
         assert result.async_mode is True
 
     def test_read_nonexistent(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             result = read_status("doesnotexist")
         assert result is None
 
     def test_read_with_result(self, tmp_path):
-        with patch("modelmux.status._status_dir", return_value=tmp_path):
+        with patch("vyane.status._status_dir", return_value=tmp_path):
             status = DispatchStatus(
                 run_id="rd2",
                 provider="codex",

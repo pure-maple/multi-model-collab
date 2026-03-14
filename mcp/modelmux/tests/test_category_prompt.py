@@ -1,13 +1,13 @@
 """Tests for MER-93: Per-Category Prompt Append."""
 
-from modelmux.config import (
+from vyane.config import (
     CategoryBinding,
     MuxConfig,
     Profile,
     get_category_binding,
 )
-from modelmux.routing import IntentCategory, IntentResult, classify_intent
-from modelmux.server import _DEFAULT_CATEGORY_PROMPTS
+from vyane.routing import IntentCategory, IntentResult, classify_intent
+from vyane.server import _DEFAULT_CATEGORY_PROMPTS
 
 
 # ── Helper ──

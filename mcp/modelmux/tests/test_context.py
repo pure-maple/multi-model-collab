@@ -1,11 +1,11 @@
 """Tests for the A2A context accumulation module."""
 
-from modelmux.a2a.context import (
+from vyane.a2a.context import (
     DEFAULT_CONTEXT_BUDGET,
     ArtifactRef,
     CollaborationContext,
 )
-from modelmux.a2a.types import Artifact, CollaborationTask, Part, Turn
+from vyane.a2a.types import Artifact, CollaborationTask, Part, Turn
 
 
 def _make_task(**kwargs):

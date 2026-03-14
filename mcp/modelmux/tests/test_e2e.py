@@ -1,4 +1,4 @@
-"""End-to-end tests for modelmux MCP server.
+"""End-to-end tests for Vyane MCP server.
 
 Run with: cd mcp/modelmux && .venv/bin/python tests/test_e2e.py
 Requires: codex and gemini CLIs on PATH.
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 # Add src to path for direct execution
 sys.path.insert(0, "src")
 
-from modelmux.server import mux_dispatch, mux_check
+from vyane.server import mux_dispatch, mux_check
 
 
 def make_mock_ctx(client_name: str = "test-runner", version: str = "1.0"):
@@ -245,7 +245,7 @@ async def test_auto_routing_exclusion():
 
 
 async def main():
-    print("modelmux End-to-End Tests")
+    print("Vyane End-to-End Tests")
     print("=" * 60)
 
     # Check availability first

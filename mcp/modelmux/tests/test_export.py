@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modelmux.export import export_csv, export_json, export_markdown, run_export
+from vyane.export import export_csv, export_json, export_markdown, run_export
 
 SAMPLE_ENTRIES = [
     {
@@ -138,36 +138,36 @@ class TestExportMarkdown:
 
 class TestRunExport:
     def test_run_csv(self):
-        with patch("modelmux.export.read_history", return_value=SAMPLE_ENTRIES):
+        with patch("vyane.export.read_history", return_value=SAMPLE_ENTRIES):
             with patch(
-                "modelmux.export.get_history_stats", return_value={"total": 2}
+                "vyane.export.get_history_stats", return_value={"total": 2}
             ):
                 content = run_export(fmt="csv")
         assert "provider" in content
         assert "codex" in content
 
     def test_run_json(self):
-        with patch("modelmux.export.read_history", return_value=SAMPLE_ENTRIES):
+        with patch("vyane.export.read_history", return_value=SAMPLE_ENTRIES):
             with patch(
-                "modelmux.export.get_history_stats", return_value={"total": 2}
+                "vyane.export.get_history_stats", return_value={"total": 2}
             ):
                 content = run_export(fmt="json")
         data = json.loads(content)
         assert data["count"] == 2
 
     def test_run_markdown(self):
-        with patch("modelmux.export.read_history", return_value=SAMPLE_ENTRIES):
+        with patch("vyane.export.read_history", return_value=SAMPLE_ENTRIES):
             with patch(
-                "modelmux.export.get_history_stats", return_value={"total": 2}
+                "vyane.export.get_history_stats", return_value={"total": 2}
             ):
                 content = run_export(fmt="md")
-        assert "# modelmux Report" in content
+        assert "# Vyane Report" in content
 
     def test_run_to_file(self, tmp_path):
         outfile = str(tmp_path / "report.csv")
-        with patch("modelmux.export.read_history", return_value=SAMPLE_ENTRIES):
+        with patch("vyane.export.read_history", return_value=SAMPLE_ENTRIES):
             with patch(
-                "modelmux.export.get_history_stats", return_value={"total": 2}
+                "vyane.export.get_history_stats", return_value={"total": 2}
             ):
                 run_export(fmt="csv", output=outfile)
         assert Path(outfile).exists()
@@ -175,9 +175,9 @@ class TestRunExport:
         assert "codex" in content
 
     def test_unknown_format(self):
-        with patch("modelmux.export.read_history", return_value=[]):
+        with patch("vyane.export.read_history", return_value=[]):
             with patch(
-                "modelmux.export.get_history_stats", return_value={"total": 0}
+                "vyane.export.get_history_stats", return_value={"total": 0}
             ):
                 with pytest.raises(ValueError, match="Unknown format"):
                     run_export(fmt="xml")

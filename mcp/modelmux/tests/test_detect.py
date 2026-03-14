@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, "src")
 
-from modelmux.detect import (
+from vyane.detect import (
     CallerInfo,
     detect_caller,
     detect_caller_from_env,
@@ -126,7 +126,7 @@ def test_exclusion_unknown_caller():
 
 def test_routing_exclusion_scenario():
     """Full scenario: Claude Code calling, task routes to claude → redirect."""
-    from modelmux.routing import keyword_scores
+    from vyane.routing import keyword_scores
 
     task = "Review this code for security vulnerabilities"
     scores = keyword_scores(task)
@@ -149,7 +149,7 @@ def test_routing_exclusion_scenario():
 
 def test_routing_no_exclusion_needed():
     """Task routes to different provider than caller → no change."""
-    from modelmux.routing import keyword_scores
+    from vyane.routing import keyword_scores
 
     task = "Implement a binary search algorithm"
     scores = keyword_scores(task)
@@ -171,7 +171,7 @@ def test_routing_no_exclusion_needed():
 
 def test_combined_exclusion():
     """disabled_providers + caller exclusion combined."""
-    from modelmux.config import MuxConfig
+    from vyane.config import MuxConfig
 
     config = MuxConfig(disabled_providers=["gemini"])
     caller = CallerInfo(provider="claude", platform="cli")

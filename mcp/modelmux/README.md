@@ -1,8 +1,10 @@
-# Plexus (modelmux)
+# Vyane
 
 <!-- mcp-name: io.github.pure-maple/modelmux -->
 
-Plexus — unified MCP server for cross-platform multi-model AI collaboration.
+Vyane — unified MCP server for cross-platform multi-model AI collaboration.
+
+Compatibility note: the legacy `modelmux` CLI alias, `.modelmux` project directory, `~/.config/modelmux/` user config path, MCP server key, and repo URLs still work during the rename window.
 
 Route tasks to **Codex CLI**, **Gemini CLI**, and **Claude Code CLI** through a single MCP interface with smart routing and caller auto-detection.
 
@@ -10,18 +12,18 @@ Route tasks to **Codex CLI**, **Gemini CLI**, and **Claude Code CLI** through a 
 
 ```bash
 # One-command install for Claude Code
-claude mcp add modelmux -s user -- uvx modelmux
+claude mcp add vyane -s user -- uvx vyane
 
 # Codex CLI (~/.codex/config.toml)
-# [mcp_servers.modelmux]
+# [mcp_servers.vyane]
 # command = "uvx"
-# args = ["modelmux"]
+# args = ["vyane"]
 # tool_timeout_sec = 600
 # startup_timeout_sec = 30
 # Leave enabled_tools unset to expose the full tool surface.
 
 # Gemini CLI (~/.gemini/settings.json)
-# {"mcpServers": {"modelmux": {"command": "uvx", "args": ["modelmux"]}}}
+# {"mcpServers": {"vyane": {"command": "uvx", "args": ["vyane"]}}}
 ```
 
 ## Tools
@@ -49,13 +51,13 @@ From Codex CLI → routes to Claude or Gemini (never back to Codex)
 
 ## Failover
 
-When a provider fails at execution time, Plexus automatically retries with the next available provider (enabled by default, `failover=True`). Failover is skipped for session-based requests since sessions are provider-specific.
+When a provider fails at execution time, Vyane automatically retries with the next available provider (enabled by default, `failover=True`). Failover is skipped for session-based requests since sessions are provider-specific.
 
 ## Audit & Policy
 
-Every dispatch call is logged to `~/.config/modelmux/audit.jsonl` for debugging and cost tracking.
+Every dispatch call is logged to `~/.config/vyane/audit.jsonl` for debugging and cost tracking. Legacy installs still fall back to `~/.config/modelmux/audit.jsonl`.
 
-Policy enforcement via `~/.config/modelmux/policy.json`:
+Policy enforcement via `~/.config/vyane/policy.json` (legacy fallback: `~/.config/modelmux/policy.json`):
 
 ```json
 {
@@ -71,7 +73,7 @@ Policy enforcement via `~/.config/modelmux/policy.json`:
 
 ## User Configuration
 
-Create `.modelmux/profiles.toml` or `~/.config/modelmux/profiles.toml`:
+Create `.modelmux/profiles.toml` or `~/.config/vyane/profiles.toml` (legacy fallback: `~/.config/modelmux/profiles.toml`):
 
 ```toml
 [routing]

@@ -1,4 +1,4 @@
-"""Tests for A2A federation — two modelmux instances interconnected.
+"""Tests for A2A federation — two Vyane instances interconnected.
 
 Verifies the concept of cross-instance routing:
   Instance A registers Instance B as an a2a_agent.
@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modelmux.a2a.client import A2AClient, A2AClientConfig, A2AResponse
-from modelmux.adapters import (
+from vyane.a2a.client import A2AClient, A2AClientConfig, A2AResponse
+from vyane.adapters import (
     A2ARemoteAdapter,
     get_all_adapters,
     load_custom_providers,
     register_a2a_agent,
 )
-from modelmux.adapters import _custom_adapters
+from vyane.adapters import _custom_adapters
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def clean_custom_adapters():
 
 
 class TestFederationRegistration:
-    """Test that remote modelmux instances can be registered as providers."""
+    """Test that remote Vyane instances can be registered as providers."""
 
     def test_register_remote_instance(self):
         register_a2a_agent(
@@ -181,8 +181,8 @@ class TestFederationAgentCard:
         )
 
         mock_card = {
-            "name": "modelmux-beta",
-            "description": "Remote modelmux instance",
+            "name": "vyane-beta",
+            "description": "Remote Vyane instance",
             "url": "http://beta:41520",
             "version": "0.24.0",
             "capabilities": {"streaming": True, "pushNotifications": True},
@@ -206,7 +206,7 @@ class TestFederationAgentCard:
 
             card = await client.discover()
 
-        assert card["name"] == "modelmux-beta"
+        assert card["name"] == "vyane-beta"
         assert len(card["skills"]) == 2
 
 

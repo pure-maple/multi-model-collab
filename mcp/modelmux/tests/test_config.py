@@ -2,7 +2,7 @@
 
 import logging
 
-from modelmux.config import (
+from vyane.config import (
     MuxConfig,
     RoutingRule,
     _parse_config,
@@ -31,7 +31,7 @@ def test_parse_config_unknown_keys_warns(caplog):
         "defualt_provider": "codex",  # typo
         "roouting": {},  # typo
     }
-    with caplog.at_level(logging.WARNING, logger="modelmux.config"):
+    with caplog.at_level(logging.WARNING, logger="vyane.config"):
         config = _parse_config(data)
 
     assert "defualt_provider" in caplog.text
@@ -53,7 +53,7 @@ def test_parse_config_all_known_keys_no_warning(caplog):
         "notifications": {},
         "workflows": {},
     }
-    with caplog.at_level(logging.WARNING, logger="modelmux.config"):
+    with caplog.at_level(logging.WARNING, logger="vyane.config"):
         _parse_config(data)
 
     assert "Unknown config keys" not in caplog.text
@@ -112,7 +112,7 @@ def test_load_config_defaults():
 
 class TestProviderConfigEnvOverrides:
     def test_codex_base_url(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(base_url="https://api.example.com")
         env = pc.to_env_overrides("codex")
@@ -121,7 +121,7 @@ class TestProviderConfigEnvOverrides:
     def test_codex_api_key(self):
         import os
 
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         os.environ["TEST_CODEX_KEY"] = "test-secret"
         try:
@@ -132,7 +132,7 @@ class TestProviderConfigEnvOverrides:
             del os.environ["TEST_CODEX_KEY"]
 
     def test_claude_env(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(
             base_url="https://claude.example.com",
@@ -143,28 +143,28 @@ class TestProviderConfigEnvOverrides:
         assert env.get("ANTHROPIC_MODEL") == "opus"
 
     def test_gemini_env(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(base_url="https://gemini.example.com")
         env = pc.to_env_overrides("gemini")
         assert env.get("GOOGLE_GEMINI_BASE_URL") == "https://gemini.example.com"
 
     def test_dashscope_env(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(base_url="https://ds.example.com")
         env = pc.to_env_overrides("dashscope")
         assert env.get("DASHSCOPE_BASE_URL") == "https://ds.example.com"
 
     def test_extra_env(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(extra_env={"CUSTOM_VAR": "value"})
         env = pc.to_env_overrides("codex")
         assert env.get("CUSTOM_VAR") == "value"
 
     def test_blocked_env_vars(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(
             extra_env={"PATH": "/evil", "HOME": "/root", "OK_VAR": "fine"}
@@ -175,14 +175,14 @@ class TestProviderConfigEnvOverrides:
         assert env.get("OK_VAR") == "fine"
 
     def test_missing_api_key_env(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig(api_key_env="NONEXISTENT_KEY_12345")
         env = pc.to_env_overrides("codex")
         assert "OPENAI_API_KEY" not in env
 
     def test_empty_config(self):
-        from modelmux.config import ProviderConfig
+        from vyane.config import ProviderConfig
 
         pc = ProviderConfig()
         env = pc.to_env_overrides("codex")
@@ -226,7 +226,7 @@ class TestRoutingRuleExtended:
 
 class TestFindConfigFile:
     def test_finds_toml(self, tmp_path):
-        from modelmux.config import _find_config_file
+        from vyane.config import _find_config_file
 
         (tmp_path / "profiles.toml").write_text("")
         result = _find_config_file(tmp_path)
@@ -234,14 +234,14 @@ class TestFindConfigFile:
         assert result.name == "profiles.toml"
 
     def test_finds_json(self, tmp_path):
-        from modelmux.config import _find_config_file
+        from vyane.config import _find_config_file
 
         (tmp_path / "profiles.json").write_text("{}")
         result = _find_config_file(tmp_path)
         assert result.name == "profiles.json"
 
     def test_toml_priority_over_json(self, tmp_path):
-        from modelmux.config import _find_config_file
+        from vyane.config import _find_config_file
 
         (tmp_path / "profiles.toml").write_text("")
         (tmp_path / "profiles.json").write_text("{}")
@@ -249,7 +249,7 @@ class TestFindConfigFile:
         assert result.name == "profiles.toml"
 
     def test_not_found(self, tmp_path):
-        from modelmux.config import _find_config_file
+        from vyane.config import _find_config_file
 
         result = _find_config_file(tmp_path)
         assert result is None
@@ -260,7 +260,7 @@ class TestFindConfigFile:
 
 class TestLoadFile:
     def test_load_json(self, tmp_path):
-        from modelmux.config import _load_file
+        from vyane.config import _load_file
 
         f = tmp_path / "test.json"
         f.write_text('{"key": "value"}')
@@ -268,7 +268,7 @@ class TestLoadFile:
         assert data["key"] == "value"
 
     def test_load_toml(self, tmp_path):
-        from modelmux.config import _load_file
+        from vyane.config import _load_file
 
         f = tmp_path / "test.toml"
         f.write_text('key = "value"')
@@ -278,7 +278,7 @@ class TestLoadFile:
     def test_unsupported_format(self, tmp_path):
         import pytest
 
-        from modelmux.config import _load_file
+        from vyane.config import _load_file
 
         f = tmp_path / "test.xml"
         f.write_text("<root/>")
@@ -291,7 +291,7 @@ class TestLoadFile:
 
 class TestMergeConfigs:
     def test_override_wins(self):
-        from modelmux.config import _merge_configs
+        from vyane.config import _merge_configs
 
         base = MuxConfig(
             active_profile="base",
@@ -306,7 +306,7 @@ class TestMergeConfigs:
         assert merged.default_provider == "gemini"
 
     def test_profiles_merged(self):
-        from modelmux.config import Profile, _merge_configs
+        from vyane.config import Profile, _merge_configs
 
         base = MuxConfig(profiles={"a": Profile(description="A")})
         override = MuxConfig(profiles={"b": Profile(description="B")})
@@ -315,7 +315,7 @@ class TestMergeConfigs:
         assert "b" in merged.profiles
 
     def test_override_profile_wins(self):
-        from modelmux.config import Profile, _merge_configs
+        from vyane.config import Profile, _merge_configs
 
         base = MuxConfig(
             profiles={"x": Profile(description="base")}
@@ -327,7 +327,7 @@ class TestMergeConfigs:
         assert merged.profiles["x"].description == "override"
 
     def test_routing_rules_override(self):
-        from modelmux.config import _merge_configs
+        from vyane.config import _merge_configs
 
         base = MuxConfig(
             routing_rules=[RoutingRule(provider="codex")]
@@ -340,7 +340,7 @@ class TestMergeConfigs:
         assert merged.routing_rules[0].provider == "gemini"
 
     def test_base_rules_when_no_override(self):
-        from modelmux.config import _merge_configs
+        from vyane.config import _merge_configs
 
         base = MuxConfig(
             routing_rules=[RoutingRule(provider="codex")]
@@ -355,7 +355,7 @@ class TestMergeConfigs:
 
 class TestGetActiveProfile:
     def test_found(self):
-        from modelmux.config import Profile, get_active_profile
+        from vyane.config import Profile, get_active_profile
 
         config = MuxConfig(
             active_profile="fast",
@@ -366,7 +366,7 @@ class TestGetActiveProfile:
         assert prof.description == "Fast mode"
 
     def test_not_found(self):
-        from modelmux.config import get_active_profile
+        from vyane.config import get_active_profile
 
         config = MuxConfig(active_profile="missing")
         assert get_active_profile(config) is None
@@ -377,7 +377,7 @@ class TestGetActiveProfile:
 
 class TestParseProfile:
     def test_with_providers(self):
-        from modelmux.config import _parse_profile
+        from vyane.config import _parse_profile
 
         data = {
             "description": "Test profile",
@@ -392,7 +392,7 @@ class TestParseProfile:
         assert prof.providers["codex"].model == "gpt-5"
 
     def test_skips_non_dict_providers(self):
-        from modelmux.config import _parse_profile
+        from vyane.config import _parse_profile
 
         data = {
             "providers": {
@@ -405,7 +405,7 @@ class TestParseProfile:
         assert "bad" not in prof.providers
 
     def test_empty_profile(self):
-        from modelmux.config import _parse_profile
+        from vyane.config import _parse_profile
 
         prof = _parse_profile({})
         assert prof.description == ""

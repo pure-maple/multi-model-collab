@@ -2,7 +2,7 @@
 
 import json
 
-from modelmux.adapters.gemini import DEPRECATION_MARKERS, GeminiAdapter
+from vyane.adapters.gemini import DEPRECATION_MARKERS, GeminiAdapter
 
 
 class TestGeminiAdapter:
@@ -284,7 +284,7 @@ class TestParseTokenUsage:
         assert usage.total_tokens == 8
 
     def test_in_registry(self):
-        from modelmux.adapters import ADAPTERS
+        from vyane.adapters import ADAPTERS
 
         assert "gemini" in ADAPTERS
         assert ADAPTERS["gemini"] is GeminiAdapter

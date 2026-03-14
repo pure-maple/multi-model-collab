@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
-from modelmux.routing import (
+from vyane.routing import (
     ProviderScore,
     _cache,
     _get_cached,
@@ -57,7 +57,7 @@ def test_keyword_scores_filter_providers():
 
 def test_history_scores_no_history():
     """With no history file, all scores should be neutral."""
-    with mock.patch("modelmux.routing._read_history_stats", return_value={}):
+    with mock.patch("vyane.routing._read_history_stats", return_value={}):
         scores = history_scores(["codex", "gemini", "claude"])
         for prov, score in scores.items():
             assert score.success_rate == 0.5
@@ -71,7 +71,7 @@ def test_history_scores_with_data():
         "codex": {"calls": 10, "success": 9, "total_duration": 50.0},
         "gemini": {"calls": 10, "success": 5, "total_duration": 100.0},
     }
-    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+    with mock.patch("vyane.routing._read_history_stats", return_value=mock_stats):
         scores = history_scores(["codex", "gemini", "claude"])
         assert scores["codex"].success_rate == 0.9
         assert scores["gemini"].success_rate == 0.5
@@ -83,7 +83,7 @@ def test_history_scores_with_data():
 
 def test_smart_route_keyword_only():
     """With no history, routing should be keyword-driven."""
-    with mock.patch("modelmux.routing._read_history_stats", return_value={}):
+    with mock.patch("vyane.routing._read_history_stats", return_value={}):
         best, scores = smart_route(
             "implement a database migration",
             available_providers=["codex", "gemini", "claude"],
@@ -99,7 +99,7 @@ def test_smart_route_history_boosts():
         # codex has poor history
         "codex": {"calls": 20, "success": 5, "total_duration": 200.0},
     }
-    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+    with mock.patch("vyane.routing._read_history_stats", return_value=mock_stats):
         # Neutral task (no keyword matches) — history should decide
         best, scores = smart_route(
             "do something interesting",
@@ -110,7 +110,7 @@ def test_smart_route_history_boosts():
 
 def test_smart_route_excludes():
     """Excluded providers should not be candidates."""
-    with mock.patch("modelmux.routing._read_history_stats", return_value={}):
+    with mock.patch("vyane.routing._read_history_stats", return_value={}):
         best, scores = smart_route(
             "implement API",
             available_providers=["codex", "gemini", "claude"],
@@ -131,7 +131,7 @@ def test_smart_route_single_candidate():
 
 def test_smart_route_default_on_tie():
     """When all scores are equal, default provider should win."""
-    with mock.patch("modelmux.routing._read_history_stats", return_value={}):
+    with mock.patch("vyane.routing._read_history_stats", return_value={}):
         best, _ = smart_route(
             "hello world",
             available_providers=["codex", "gemini", "claude"],
@@ -297,8 +297,8 @@ def test_smart_route_benchmark_boosts():
         path = Path(f.name)
 
     try:
-        with mock.patch("modelmux.routing._read_history_stats", return_value={}):
-            with mock.patch("modelmux.routing._BENCHMARK_FILE", path):
+        with mock.patch("vyane.routing._read_history_stats", return_value={}):
+            with mock.patch("vyane.routing._BENCHMARK_FILE", path):
                 best, scores = smart_route(
                     "review this code for security issues",
                     available_providers=["codex", "gemini"],
@@ -311,7 +311,7 @@ def test_smart_route_benchmark_boosts():
 
 def test_smart_route_task_category_in_scores():
     """Task category should be stored in ProviderScore."""
-    with mock.patch("modelmux.routing._read_history_stats", return_value={}):
+    with mock.patch("vyane.routing._read_history_stats", return_value={}):
         _, scores = smart_route(
             "implement a new API endpoint",
             available_providers=["codex", "gemini"],
@@ -366,7 +366,7 @@ def test_history_stats_cache():
     }
     # Pre-populate cache — second call should skip file I/O
     _set_cached("history_stats_72", mock_stats)
-    from modelmux.routing import _read_history_stats
+    from vyane.routing import _read_history_stats
     result = _read_history_stats(hours=72)
     assert result == mock_stats
 
@@ -414,13 +414,13 @@ def test_smart_route_full_four_signal():
         "codex": {"calls": 10, "success": 9, "total_duration": 50.0},
         "gemini": {"calls": 10, "success": 5, "total_duration": 100.0},
     }
-    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+    with mock.patch("vyane.routing._read_history_stats", return_value=mock_stats):
         with mock.patch(
-            "modelmux.routing.benchmark_scores",
+            "vyane.routing.benchmark_scores",
             return_value={"codex": 0.9, "gemini": 0.3},
         ):
             with mock.patch(
-                "modelmux.feedback.feedback_scores",
+                "vyane.feedback.feedback_scores",
                 return_value={"codex": 0.8, "gemini": 0.4},
             ):
                 best, scores = smart_route(
@@ -441,13 +441,13 @@ def test_smart_route_three_signal_no_feedback():
         "codex": {"calls": 8, "success": 7, "total_duration": 40.0},
         "gemini": {"calls": 8, "success": 3, "total_duration": 80.0},
     }
-    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+    with mock.patch("vyane.routing._read_history_stats", return_value=mock_stats):
         with mock.patch(
-            "modelmux.routing.benchmark_scores",
+            "vyane.routing.benchmark_scores",
             return_value={"codex": 0.8, "gemini": 0.3},
         ):
             with mock.patch(
-                "modelmux.feedback.feedback_scores",
+                "vyane.feedback.feedback_scores",
                 return_value={"codex": 0.5, "gemini": 0.5},
             ):
                 _, scores = smart_route(
@@ -464,7 +464,7 @@ def test_smart_route_history_with_partial_signals():
         "codex": {"calls": 3, "success": 3, "total_duration": 15.0},
         "gemini": {"calls": 3, "success": 1, "total_duration": 30.0},
     }
-    with mock.patch("modelmux.routing._read_history_stats", return_value=mock_stats):
+    with mock.patch("vyane.routing._read_history_stats", return_value=mock_stats):
         _, scores = smart_route(
             "hello world",
             available_providers=["codex", "gemini"],

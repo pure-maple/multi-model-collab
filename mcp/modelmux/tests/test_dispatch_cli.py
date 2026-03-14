@@ -1,11 +1,11 @@
-"""Tests for the `modelmux dispatch` and `modelmux broadcast` CLI subcommands."""
+"""Tests for the `vyane dispatch` and `vyane broadcast` CLI subcommands."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modelmux.adapters.base import AdapterResult, BaseAdapter
+from vyane.adapters.base import AdapterResult, BaseAdapter
 
 
 def _make_adapter(available=True, result=None):
@@ -61,7 +61,7 @@ def _broadcast_ns(**overrides):
 
 def test_dispatch_no_task_exits(monkeypatch):
     """dispatch with no task and empty stdin should exit 1."""
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(provider="auto", task=[])
     monkeypatch.setattr("sys.stdin", MagicMock(read=MagicMock(return_value="")))
@@ -72,14 +72,14 @@ def test_dispatch_no_task_exits(monkeypatch):
 
 
 def test_dispatch_no_providers_exits():
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(provider="auto", task=["hello world"])
     mock_adapter = _make_adapter(available=False)
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_adapter},
         ),
         pytest.raises(SystemExit) as exc_info,
@@ -89,7 +89,7 @@ def test_dispatch_no_providers_exits():
 
 
 def test_dispatch_success(capsys):
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(task=["review", "this", "code"])
     fake_result = AdapterResult(
@@ -102,7 +102,7 @@ def test_dispatch_success(capsys):
     mock_adapter = _make_adapter(available=True, result=fake_result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_adapter},
     ):
         _cmd_dispatch(ns)
@@ -115,7 +115,7 @@ def test_dispatch_success(capsys):
 
 
 def test_dispatch_auto_routes(capsys):
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(provider="auto", task=["analyze architecture"])
     mock_codex = _make_adapter(available=True)
@@ -130,11 +130,11 @@ def test_dispatch_auto_routes(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_codex, "gemini": mock_gemini},
         ),
         patch(
-            "modelmux.routing.smart_route",
+            "vyane.routing.smart_route",
             return_value=("gemini", {}),
         ),
     ):
@@ -146,7 +146,7 @@ def test_dispatch_auto_routes(capsys):
 
 
 def test_dispatch_passes_model(capsys):
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(
         model="gpt-5.4", timeout=120, workdir="/tmp", task=["test"]
@@ -157,7 +157,7 @@ def test_dispatch_passes_model(capsys):
     mock_adapter = _make_adapter(available=True, result=fake_result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_adapter},
     ):
         _cmd_dispatch(ns)
@@ -169,7 +169,7 @@ def test_dispatch_passes_model(capsys):
 
 
 def test_dispatch_error_exits_1(capsys):
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(task=["fail"])
     fake_result = AdapterResult(
@@ -179,7 +179,7 @@ def test_dispatch_error_exits_1(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_adapter},
         ),
         pytest.raises(SystemExit) as exc_info,
@@ -194,7 +194,7 @@ def test_dispatch_error_exits_1(capsys):
 
 def test_dispatch_retry_succeeds_on_second_attempt(capsys):
     """dispatch --max-retries=2 should retry on error."""
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(max_retries=2, task=["retry me"])
 
@@ -215,7 +215,7 @@ def test_dispatch_retry_succeeds_on_second_attempt(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_adapter},
         ),
         patch("time.sleep"),
@@ -233,7 +233,7 @@ def test_dispatch_retry_succeeds_on_second_attempt(capsys):
 
 def test_broadcast_success(capsys):
     """broadcast should return results from all providers."""
-    from modelmux.cli import _cmd_broadcast
+    from vyane.cli import _cmd_broadcast
 
     ns = _broadcast_ns(task=["review code"])
 
@@ -247,7 +247,7 @@ def test_broadcast_success(capsys):
     mock_gemini = _make_adapter(available=True, result=gemini_result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_codex, "gemini": mock_gemini},
     ):
         _cmd_broadcast(ns)
@@ -262,7 +262,7 @@ def test_broadcast_success(capsys):
 
 def test_broadcast_specific_providers(capsys):
     """broadcast --providers codex should only use codex."""
-    from modelmux.cli import _cmd_broadcast
+    from vyane.cli import _cmd_broadcast
 
     ns = _broadcast_ns(providers=["codex"], task=["test"])
     codex_result = AdapterResult(
@@ -272,7 +272,7 @@ def test_broadcast_specific_providers(capsys):
     mock_gemini = _make_adapter(available=True)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_codex, "gemini": mock_gemini},
     ):
         _cmd_broadcast(ns)
@@ -285,7 +285,7 @@ def test_broadcast_specific_providers(capsys):
 
 def test_dispatch_failover_success(capsys):
     """dispatch --failover should try another provider on error."""
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(task=["fail then recover"], failover=True)
     err_result = AdapterResult(
@@ -298,7 +298,7 @@ def test_dispatch_failover_success(capsys):
     mock_gemini = _make_adapter(available=True, result=ok_result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_codex, "gemini": mock_gemini},
     ):
         _cmd_dispatch(ns)
@@ -312,7 +312,7 @@ def test_dispatch_failover_success(capsys):
 
 def test_dispatch_no_failover_by_default(capsys):
     """dispatch without --failover should not try other providers."""
-    from modelmux.cli import _cmd_dispatch
+    from vyane.cli import _cmd_dispatch
 
     ns = _dispatch_ns(task=["fail"])
     err_result = AdapterResult(
@@ -323,7 +323,7 @@ def test_dispatch_no_failover_by_default(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_codex, "gemini": mock_gemini},
         ),
         pytest.raises(SystemExit) as exc_info,
@@ -339,7 +339,7 @@ def test_dispatch_no_failover_by_default(capsys):
 
 def test_broadcast_compare(capsys):
     """broadcast --compare should add comparison analysis."""
-    from modelmux.cli import _cmd_broadcast
+    from vyane.cli import _cmd_broadcast
 
     ns = _broadcast_ns(task=["compare test"], compare=True)
     codex_result = AdapterResult(
@@ -360,7 +360,7 @@ def test_broadcast_compare(capsys):
     mock_gemini = _make_adapter(available=True, result=gemini_result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_codex, "gemini": mock_gemini},
     ):
         _cmd_broadcast(ns)
@@ -375,7 +375,7 @@ def test_broadcast_compare(capsys):
 
 def test_broadcast_no_compare_by_default(capsys):
     """broadcast without --compare should not include comparison."""
-    from modelmux.cli import _cmd_broadcast
+    from vyane.cli import _cmd_broadcast
 
     ns = _broadcast_ns(task=["no compare"])
     result = AdapterResult(
@@ -384,7 +384,7 @@ def test_broadcast_no_compare_by_default(capsys):
     mock_adapter = _make_adapter(available=True, result=result)
 
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock_adapter},
     ):
         _cmd_broadcast(ns)
@@ -396,7 +396,7 @@ def test_broadcast_no_compare_by_default(capsys):
 
 def test_broadcast_all_fail_exits_1(capsys):
     """broadcast should exit 1 if all providers fail."""
-    from modelmux.cli import _cmd_broadcast
+    from vyane.cli import _cmd_broadcast
 
     ns = _broadcast_ns(task=["fail"])
     err_result = AdapterResult(
@@ -406,7 +406,7 @@ def test_broadcast_all_fail_exits_1(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_adapter},
         ),
         pytest.raises(SystemExit) as exc_info,
@@ -421,8 +421,8 @@ def test_broadcast_all_fail_exits_1(capsys):
 
 def test_dispatch_with_profile(capsys):
     """dispatch --profile should apply profile model override."""
-    from modelmux.cli import _cmd_dispatch
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _cmd_dispatch
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     ns = _dispatch_ns(task=["test"], profile="budget")
     fake_result = AdapterResult(
@@ -439,10 +439,10 @@ def test_dispatch_with_profile(capsys):
 
     with (
         patch(
-            "modelmux.adapters.get_all_adapters",
+            "vyane.adapters.get_all_adapters",
             return_value={"codex": mock_adapter},
         ),
-        patch("modelmux.config.load_config", return_value=config),
+        patch("vyane.config.load_config", return_value=config),
     ):
         _cmd_dispatch(ns)
 
@@ -452,14 +452,14 @@ def test_dispatch_with_profile(capsys):
 
 def test_profile_list_empty(capsys):
     """profile with no profiles should show 'No profiles'."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig
 
     ns = MagicMock()
     ns.name = ""
     ns.json = False
 
-    with patch("modelmux.config.load_config", return_value=MuxConfig()):
+    with patch("vyane.config.load_config", return_value=MuxConfig()):
         _cmd_profile(ns)
 
     captured = capsys.readouterr()
@@ -468,8 +468,8 @@ def test_profile_list_empty(capsys):
 
 def test_profile_list_with_profiles(capsys):
     """profile should list configured profiles."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     config = MuxConfig(
         active_profile="budget",
@@ -484,7 +484,7 @@ def test_profile_list_with_profiles(capsys):
     ns.name = ""
     ns.json = False
 
-    with patch("modelmux.config.load_config", return_value=config):
+    with patch("vyane.config.load_config", return_value=config):
         _cmd_profile(ns)
 
     captured = capsys.readouterr()
@@ -494,8 +494,8 @@ def test_profile_list_with_profiles(capsys):
 
 def test_profile_show_json(capsys):
     """profile <name> --json should output JSON."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     config = MuxConfig(
         profiles={
@@ -509,7 +509,7 @@ def test_profile_show_json(capsys):
     ns.name = "fast"
     ns.json = True
 
-    with patch("modelmux.config.load_config", return_value=config):
+    with patch("vyane.config.load_config", return_value=config):
         _cmd_profile(ns)
 
     captured = capsys.readouterr()
@@ -520,15 +520,15 @@ def test_profile_show_json(capsys):
 
 def test_profile_not_found():
     """profile <unknown> should exit 1."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig
 
     ns = MagicMock()
     ns.name = "nonexistent"
     ns.json = False
 
     with (
-        patch("modelmux.config.load_config", return_value=MuxConfig()),
+        patch("vyane.config.load_config", return_value=MuxConfig()),
         pytest.raises(SystemExit) as exc_info,
     ):
         _cmd_profile(ns)
@@ -558,11 +558,11 @@ def _feedback_ns(**overrides):
 
 def test_feedback_submit(capsys, tmp_path):
     """feedback --run-id --provider --rating should log feedback."""
-    from modelmux.cli import _cmd_feedback
+    from vyane.cli import _cmd_feedback
 
     ns = _feedback_ns(run_id="abc123", provider="codex", rating=4, comment="great")
 
-    with patch("modelmux.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"):
+    with patch("vyane.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"):
         _cmd_feedback(ns)
 
     captured = capsys.readouterr()
@@ -574,7 +574,7 @@ def test_feedback_submit(capsys, tmp_path):
 
 def test_feedback_missing_args_exits():
     """feedback without required args should exit 1."""
-    from modelmux.cli import _cmd_feedback
+    from vyane.cli import _cmd_feedback
 
     ns = _feedback_ns()  # all empty
 
@@ -585,12 +585,12 @@ def test_feedback_missing_args_exits():
 
 def test_feedback_invalid_rating_exits(tmp_path):
     """feedback with rating outside 1-5 should exit 1."""
-    from modelmux.cli import _cmd_feedback
+    from vyane.cli import _cmd_feedback
 
     ns = _feedback_ns(run_id="x", provider="codex", rating=7)
 
     with (
-        patch("modelmux.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"),
+        patch("vyane.feedback._feedback_file", return_value=tmp_path / "fb.jsonl"),
         pytest.raises(SystemExit) as exc_info,
     ):
         _cmd_feedback(ns)
@@ -599,11 +599,11 @@ def test_feedback_invalid_rating_exits(tmp_path):
 
 def test_feedback_list_empty(capsys):
     """feedback --list with no data should show message."""
-    from modelmux.cli import _cmd_feedback
+    from vyane.cli import _cmd_feedback
 
     ns = _feedback_ns(**{"list": True})
 
-    with patch("modelmux.feedback.read_feedback", return_value=[]):
+    with patch("vyane.feedback.read_feedback", return_value=[]):
         _cmd_feedback(ns)
 
     captured = capsys.readouterr()
@@ -615,7 +615,7 @@ def test_feedback_list_empty(capsys):
 
 def test_clean_dry_run(capsys, tmp_path):
     """clean --dry-run should not delete files."""
-    from modelmux.cli import _cmd_clean
+    from vyane.cli import _cmd_clean
 
     history = tmp_path / "history.jsonl"
     history.write_text('{"test": true}\n')
@@ -625,7 +625,7 @@ def test_clean_dry_run(capsys, tmp_path):
     ns.dry_run = True
 
     # Create the config dir structure
-    cfg = tmp_path / ".config" / "modelmux"
+    cfg = tmp_path / ".config" / "vyane"
     cfg.mkdir(parents=True)
     h = cfg / "history.jsonl"
     h.write_text('{"test": true}\n')
@@ -642,9 +642,9 @@ def test_clean_dry_run(capsys, tmp_path):
 
 def test_clean_removes_file(capsys, tmp_path):
     """clean history should remove history.jsonl."""
-    from modelmux.cli import _cmd_clean
+    from vyane.cli import _cmd_clean
 
-    cfg = tmp_path / ".config" / "modelmux"
+    cfg = tmp_path / ".config" / "vyane"
     cfg.mkdir(parents=True)
     h = cfg / "history.jsonl"
     h.write_text('{"test": true}\n')
@@ -663,7 +663,7 @@ def test_clean_removes_file(capsys, tmp_path):
 
 def test_clean_nothing_to_clean(capsys, tmp_path):
     """clean with no files shows nothing message."""
-    from modelmux.cli import _cmd_clean
+    from vyane.cli import _cmd_clean
 
     ns = MagicMock()
     ns.what = "all"
@@ -699,14 +699,14 @@ def _history_ns(**overrides):
 
 def test_history_json_entries(capsys):
     """history --json outputs valid JSON with entries."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     entries = [
         {"provider": "codex", "status": "success", "ts": 1000, "task": "test"},
     ]
     ns = _history_ns(json=True)
 
-    with patch("modelmux.history.read_history", return_value=entries):
+    with patch("vyane.history.read_history", return_value=entries):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -717,11 +717,11 @@ def test_history_json_entries(capsys):
 
 def test_history_json_empty(capsys):
     """history --json with no entries outputs empty list."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     ns = _history_ns(json=True)
 
-    with patch("modelmux.history.read_history", return_value=[]):
+    with patch("vyane.history.read_history", return_value=[]):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -732,12 +732,12 @@ def test_history_json_empty(capsys):
 
 def test_history_stats_json(capsys):
     """history --stats --json outputs stats as JSON."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     stats = {"total": 5, "by_provider": {"codex": {"calls": 5}}}
     ns = _history_ns(stats=True, json=True)
 
-    with patch("modelmux.history.get_history_stats", return_value=stats):
+    with patch("vyane.history.get_history_stats", return_value=stats):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -747,11 +747,11 @@ def test_history_stats_json(capsys):
 
 def test_history_no_data(capsys):
     """history with no entries shows message."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     ns = _history_ns()
 
-    with patch("modelmux.history.read_history", return_value=[]):
+    with patch("vyane.history.read_history", return_value=[]):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -760,7 +760,7 @@ def test_history_no_data(capsys):
 
 def test_history_stats_text(capsys):
     """history --stats in text mode shows statistics."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     stats = {
         "total": 3,
@@ -772,7 +772,7 @@ def test_history_stats_text(capsys):
     }
     ns = _history_ns(stats=True)
 
-    with patch("modelmux.history.get_history_stats", return_value=stats):
+    with patch("vyane.history.get_history_stats", return_value=stats):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -782,11 +782,11 @@ def test_history_stats_text(capsys):
 
 def test_history_stats_empty(capsys):
     """history --stats with no data shows message."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     ns = _history_ns(stats=True)
 
-    with patch("modelmux.history.get_history_stats", return_value={"total": 0}):
+    with patch("vyane.history.get_history_stats", return_value={"total": 0}):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -795,7 +795,7 @@ def test_history_stats_empty(capsys):
 
 def test_history_stats_with_costs(capsys):
     """history --stats --costs shows cost breakdown."""
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     stats = {
         "total": 1,
@@ -818,7 +818,7 @@ def test_history_stats_with_costs(capsys):
     }
     ns = _history_ns(stats=True, costs=True)
 
-    with patch("modelmux.history.get_history_stats", return_value=stats):
+    with patch("vyane.history.get_history_stats", return_value=stats):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -830,7 +830,7 @@ def test_history_text_entries(capsys):
     """history in text mode shows entries."""
     import time
 
-    from modelmux.cli import _cmd_history
+    from vyane.cli import _cmd_history
 
     entries = [
         {
@@ -844,7 +844,7 @@ def test_history_text_entries(capsys):
     ]
     ns = _history_ns()
 
-    with patch("modelmux.history.read_history", return_value=entries):
+    with patch("vyane.history.read_history", return_value=entries):
         _cmd_history(ns)
 
     captured = capsys.readouterr()
@@ -857,7 +857,7 @@ def test_history_text_entries(capsys):
 
 def test_check_text(capsys):
     """check in text mode shows provider availability."""
-    from modelmux.cli import _cmd_check
+    from vyane.cli import _cmd_check
 
     ns = MagicMock()
     ns.json = False
@@ -867,10 +867,10 @@ def test_check_text(capsys):
     mock_adapter._binary_name.return_value = "codex"
 
     with (
-        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("vyane.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
         patch("shutil.which", return_value="/usr/bin/codex"),
-        patch("modelmux.config.load_config") as mock_config,
-        patch("modelmux.history.get_history_stats", return_value={"total": 0}),
+        patch("vyane.config.load_config") as mock_config,
+        patch("vyane.history.get_history_stats", return_value={"total": 0}),
     ):
         mock_config.return_value = MagicMock(
             profiles={},
@@ -880,13 +880,13 @@ def test_check_text(capsys):
         _cmd_check(ns)
 
     captured = capsys.readouterr()
-    assert "modelmux" in captured.out
+    assert "Vyane" in captured.out
     assert "Providers" in captured.out
 
 
 def test_check_json(capsys):
     """check --json outputs valid JSON."""
-    from modelmux.cli import _cmd_check
+    from vyane.cli import _cmd_check
 
     ns = MagicMock()
     ns.json = True
@@ -896,9 +896,9 @@ def test_check_json(capsys):
     mock_adapter._binary_name.return_value = "codex"
 
     with (
-        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("vyane.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
         patch("shutil.which", return_value="/usr/bin/codex"),
-        patch("modelmux.config.load_config") as mock_config,
+        patch("vyane.config.load_config") as mock_config,
     ):
         mock_config.return_value = MagicMock(
             profiles={"fast": MagicMock()},
@@ -919,12 +919,12 @@ def test_check_json(capsys):
 
 def test_status_no_active(capsys):
     """status with no active dispatches shows message."""
-    from modelmux.cli import _cmd_status
+    from vyane.cli import _cmd_status
 
     ns = MagicMock()
     ns.watch = False
 
-    with patch("modelmux.status.list_active", return_value=[]):
+    with patch("vyane.status.list_active", return_value=[]):
         _cmd_status(ns)
 
     captured = capsys.readouterr()
@@ -935,8 +935,8 @@ def test_status_with_active(capsys):
     """status shows active dispatches."""
     import time
 
-    from modelmux.cli import _cmd_status
-    from modelmux.status import DispatchStatus
+    from vyane.cli import _cmd_status
+    from vyane.status import DispatchStatus
 
     ns = MagicMock()
     ns.watch = False
@@ -951,7 +951,7 @@ def test_status_with_active(capsys):
         ),
     ]
 
-    with patch("modelmux.status.list_active", return_value=active):
+    with patch("vyane.status.list_active", return_value=active):
         _cmd_status(ns)
 
     captured = capsys.readouterr()
@@ -964,12 +964,12 @@ def test_status_with_active(capsys):
 
 def test_cmd_version(capsys):
     """version should print version string."""
-    from modelmux.cli import _cmd_version
+    from vyane.cli import _cmd_version
 
     _cmd_version()
 
     captured = capsys.readouterr()
-    assert "modelmux" in captured.out
+    assert "Vyane" in captured.out
 
 
 # ── helper function tests ──
@@ -977,11 +977,11 @@ def test_cmd_version(capsys):
 
 def test_get_available_adapters():
     """_get_available_adapters returns available adapters."""
-    from modelmux.cli import _get_available_adapters
+    from vyane.cli import _get_available_adapters
 
     mock = _make_adapter(available=True)
     with patch(
-        "modelmux.adapters.get_all_adapters",
+        "vyane.adapters.get_all_adapters",
         return_value={"codex": mock},
     ):
         all_a, available = _get_available_adapters()
@@ -990,7 +990,7 @@ def test_get_available_adapters():
 
 def test_resolve_adapter():
     """_resolve_adapter returns adapter instance."""
-    from modelmux.cli import _resolve_adapter
+    from vyane.cli import _resolve_adapter
 
     mock = _make_adapter(available=True)
     result = _resolve_adapter({"codex": mock}, "codex")
@@ -999,7 +999,7 @@ def test_resolve_adapter():
 
 def test_read_task_from_args():
     """_read_task reads from positional args."""
-    from modelmux.cli import _read_task
+    from vyane.cli import _read_task
 
     ns = MagicMock()
     ns.task = ["hello", "world"]
@@ -1008,7 +1008,7 @@ def test_read_task_from_args():
 
 def test_apply_profile_with_model():
     """_apply_profile with model returns model in extra_args."""
-    from modelmux.cli import _apply_profile
+    from vyane.cli import _apply_profile
 
     extra, env = _apply_profile("codex", "gpt-5", "")
     assert extra["model"] == "gpt-5"
@@ -1017,8 +1017,8 @@ def test_apply_profile_with_model():
 
 def test_apply_profile_with_profile_name():
     """_apply_profile with profile name loads config."""
-    from modelmux.cli import _apply_profile
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _apply_profile
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     config = MuxConfig(
         profiles={
@@ -1028,7 +1028,7 @@ def test_apply_profile_with_profile_name():
         },
     )
 
-    with patch("modelmux.config.load_config", return_value=config):
+    with patch("vyane.config.load_config", return_value=config):
         extra, env = _apply_profile("codex", "", "test")
         assert extra["model"] == "custom-model"
 
@@ -1038,26 +1038,26 @@ def test_apply_profile_with_profile_name():
 
 def test_cmd_init():
     """_cmd_init calls run_wizard."""
-    from modelmux.cli import _cmd_init
+    from vyane.cli import _cmd_init
 
     ns = MagicMock()
     ns.scope = "user"
 
-    with patch("modelmux.init_wizard.run_wizard") as mock_wizard:
+    with patch("vyane.init_wizard.run_wizard") as mock_wizard:
         _cmd_init(ns)
         mock_wizard.assert_called_once_with(scope="user")
 
 
 def test_cmd_config_missing_textual(capsys):
     """_cmd_config exits when textual is not installed."""
-    from modelmux.cli import _cmd_config
+    from vyane.cli import _cmd_config
 
     ns = MagicMock()
     ns.scope = "user"
 
     with (
-        patch.dict("sys.modules", {"modelmux.tui": None}),
-        patch("modelmux.cli._cmd_config") as mock_fn,
+        patch.dict("sys.modules", {"vyane.tui": None}),
+        patch("vyane.cli._cmd_config") as mock_fn,
     ):
         # Simulate ImportError path
         mock_fn.side_effect = SystemExit(1)
@@ -1070,7 +1070,7 @@ def test_cmd_config_missing_textual(capsys):
 
 def test_cmd_export_to_stdout(capsys):
     """export without --output prints to stdout."""
-    from modelmux.cli import _cmd_export
+    from vyane.cli import _cmd_export
 
     ns = MagicMock()
     ns.format = "csv"
@@ -1080,7 +1080,7 @@ def test_cmd_export_to_stdout(capsys):
     ns.output = ""
     ns.source = ""
 
-    with patch("modelmux.export.run_export", return_value="col1,col2\nval1,val2"):
+    with patch("vyane.export.run_export", return_value="col1,col2\nval1,val2"):
         _cmd_export(ns)
 
     captured = capsys.readouterr()
@@ -1089,7 +1089,7 @@ def test_cmd_export_to_stdout(capsys):
 
 def test_cmd_export_to_file(capsys):
     """export with --output shows filename."""
-    from modelmux.cli import _cmd_export
+    from vyane.cli import _cmd_export
 
     ns = MagicMock()
     ns.format = "json"
@@ -1099,7 +1099,7 @@ def test_cmd_export_to_file(capsys):
     ns.output = "/tmp/test.json"
     ns.source = ""
 
-    with patch("modelmux.export.run_export", return_value="{}"):
+    with patch("vyane.export.run_export", return_value="{}"):
         _cmd_export(ns)
 
     captured = capsys.readouterr()
@@ -1113,20 +1113,20 @@ def test_main_version(capsys):
     """main() with 'version' subcommand prints version."""
     import sys
 
-    from modelmux.cli import main
+    from vyane.cli import main
 
     with patch.object(sys, "argv", ["modelmux", "version"]):
         main()
 
     captured = capsys.readouterr()
-    assert "modelmux" in captured.out
+    assert "Vyane" in captured.out
 
 
 def test_main_check(capsys):
     """main() with 'check' routes to _cmd_check."""
     import sys
 
-    from modelmux.cli import main
+    from vyane.cli import main
 
     mock_adapter = MagicMock(spec=BaseAdapter)
     mock_adapter.check_available.return_value = False
@@ -1134,10 +1134,10 @@ def test_main_check(capsys):
 
     with (
         patch.object(sys, "argv", ["modelmux", "check"]),
-        patch("modelmux.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
+        patch("vyane.adapters.ADAPTERS", {"codex": lambda: mock_adapter}),
         patch("shutil.which", return_value=None),
-        patch("modelmux.config.load_config") as mock_config,
-        patch("modelmux.history.get_history_stats", return_value={"total": 0}),
+        patch("vyane.config.load_config") as mock_config,
+        patch("vyane.history.get_history_stats", return_value={"total": 0}),
     ):
         mock_config.return_value = MagicMock(
             profiles={},
@@ -1147,7 +1147,7 @@ def test_main_check(capsys):
         main()
 
     captured = capsys.readouterr()
-    assert "modelmux" in captured.out
+    assert "Vyane" in captured.out
 
 
 # ── feedback list with entries ──
@@ -1155,7 +1155,7 @@ def test_main_check(capsys):
 
 def test_feedback_list_with_entries(capsys):
     """feedback --list with entries shows ratings."""
-    from modelmux.cli import _cmd_feedback
+    from vyane.cli import _cmd_feedback
 
     entries = [
         {"run_id": "abc12345", "provider": "codex", "rating": 5, "comment": "great"},
@@ -1163,7 +1163,7 @@ def test_feedback_list_with_entries(capsys):
     ]
     ns = _feedback_ns(**{"list": True})
 
-    with patch("modelmux.feedback.read_feedback", return_value=entries):
+    with patch("vyane.feedback.read_feedback", return_value=entries):
         _cmd_feedback(ns)
 
     captured = capsys.readouterr()
@@ -1176,8 +1176,8 @@ def test_feedback_list_with_entries(capsys):
 
 def test_profile_list_json(capsys):
     """profile --json outputs JSON profile list."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     config = MuxConfig(
         active_profile="fast",
@@ -1192,7 +1192,7 @@ def test_profile_list_json(capsys):
     ns.name = ""
     ns.json = True
 
-    with patch("modelmux.config.load_config", return_value=config):
+    with patch("vyane.config.load_config", return_value=config):
         _cmd_profile(ns)
 
     captured = capsys.readouterr()
@@ -1203,8 +1203,8 @@ def test_profile_list_json(capsys):
 
 def test_profile_show_text(capsys):
     """profile <name> in text mode shows details."""
-    from modelmux.cli import _cmd_profile
-    from modelmux.config import MuxConfig, Profile, ProviderConfig
+    from vyane.cli import _cmd_profile
+    from vyane.config import MuxConfig, Profile, ProviderConfig
 
     config = MuxConfig(
         profiles={
@@ -1218,7 +1218,7 @@ def test_profile_show_text(capsys):
     ns.name = "budget"
     ns.json = False
 
-    with patch("modelmux.config.load_config", return_value=config):
+    with patch("vyane.config.load_config", return_value=config):
         _cmd_profile(ns)
 
     captured = capsys.readouterr()

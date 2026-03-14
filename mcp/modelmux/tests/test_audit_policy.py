@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, "src")
 
-from modelmux.audit import AuditEntry, _audit_file, get_audit_stats, log_dispatch
-from modelmux.policy import Policy, PolicyResult, check_policy, load_policy
+from vyane.audit import AuditEntry, _audit_file, get_audit_stats, log_dispatch
+from vyane.policy import Policy, PolicyResult, check_policy, load_policy
 
 
 # === Audit Tests ===
@@ -23,8 +23,8 @@ def test_audit_log_write():
     """Test writing an audit entry to a temp file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_file = Path(tmpdir) / "audit.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=fake_file):
-            with patch("modelmux.audit._audit_dir", return_value=Path(tmpdir)):
+        with patch("vyane.audit._audit_file", return_value=fake_file):
+            with patch("vyane.audit._audit_dir", return_value=Path(tmpdir)):
                 entry = AuditEntry(
                     timestamp=datetime.datetime.now(
                         datetime.timezone.utc
@@ -52,8 +52,8 @@ def test_audit_stats():
     """Test audit stats calculation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_file = Path(tmpdir) / "audit.jsonl"
-        with patch("modelmux.audit._audit_file", return_value=fake_file):
-            with patch("modelmux.audit._audit_dir", return_value=Path(tmpdir)):
+        with patch("vyane.audit._audit_file", return_value=fake_file):
+            with patch("vyane.audit._audit_dir", return_value=Path(tmpdir)):
                 ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 for i, (prov, status) in enumerate(
                     [
@@ -184,7 +184,7 @@ def test_policy_load_from_file():
                 }
             )
         )
-        with patch("modelmux.policy._policy_file", return_value=policy_file):
+        with patch("vyane.policy._policy_file", return_value=policy_file):
             policy = load_policy()
             assert "gemini" in policy.blocked_providers
             assert "full" in policy.blocked_sandboxes

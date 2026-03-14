@@ -185,13 +185,13 @@ _PROMPT_INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "evasion_unicode_escape",
         re.compile(
-            r"\\u[0-9a-fA-F]{4}.*\\u[0-9a-fA-F]{4}.*\\u[0-9a-fA-F]{4}",
+            r"\\u[0-9a-fA-F]{4}.*?\\u[0-9a-fA-F]{4}.*?\\u[0-9a-fA-F]{4}",
         ),
     ),
     (
         "evasion_hex_escape",
         re.compile(
-            r"\\x[0-9a-fA-F]{2}.*\\x[0-9a-fA-F]{2}.*\\x[0-9a-fA-F]{2}",
+            r"\\x[0-9a-fA-F]{2}.*?\\x[0-9a-fA-F]{2}.*?\\x[0-9a-fA-F]{2}",
         ),
     ),
     (

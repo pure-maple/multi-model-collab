@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -64,6 +66,7 @@ class WorkflowState:
     workflow_id: str
     workflow_name: str
     steps: list[PersistentStep]
+    original_task: str = ""
     current_step: int = 0
     status: str = "pending"  # pending/running/completed/failed/paused
     created_at: float = 0.0
@@ -93,6 +96,16 @@ class Workflow:
 
 # Placeholder pattern: {input} or {step_name}
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+_WORKFLOW_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_workflow_id(workflow_id: str) -> str:
+    """Reject workflow ids that could escape the state directory."""
+    if not _WORKFLOW_ID_RE.fullmatch(workflow_id):
+        raise ValueError(
+            "workflow_id must contain only letters, numbers, underscores, and hyphens"
+        )
+    return workflow_id
 
 
 def render_task(template: str, context: dict[str, str]) -> str:
@@ -229,6 +242,7 @@ def _state_to_dict(state: WorkflowState) -> dict:
         "workflow_id": state.workflow_id,
         "workflow_name": state.workflow_name,
         "steps": [_step_to_dict(s) for s in state.steps],
+        "original_task": state.original_task,
         "current_step": state.current_step,
         "status": state.status,
         "created_at": state.created_at,
@@ -242,6 +256,7 @@ def _state_from_dict(d: dict) -> WorkflowState:
         workflow_id=d["workflow_id"],
         workflow_name=d["workflow_name"],
         steps=[_step_from_dict(s) for s in d.get("steps", [])],
+        original_task=d.get("original_task", ""),
         current_step=d.get("current_step", 0),
         status=d.get("status", "pending"),
         created_at=d.get("created_at", 0.0),
@@ -259,9 +274,25 @@ def save_workflow_state(
     """
     base = state_dir or WORKFLOW_STATE_DIR
     base.mkdir(parents=True, exist_ok=True)
-    path = base / f"{state.workflow_id}.json"
+    path = base / f"{_validate_workflow_id(state.workflow_id)}.json"
     state.updated_at = time.time()
-    path.write_text(json.dumps(_state_to_dict(state), indent=2, ensure_ascii=False))
+    payload = json.dumps(_state_to_dict(state), indent=2, ensure_ascii=False)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=base,
+            encoding="utf-8",
+            delete=False,
+        ) as tmp:
+            tmp.write(payload)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            temp_path = Path(tmp.name)
+        os.replace(temp_path, path)
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
     return path
 
 
@@ -271,7 +302,12 @@ def load_workflow_state(
 ) -> WorkflowState | None:
     """Load a persisted WorkflowState from disk, or None if not found."""
     base = state_dir or WORKFLOW_STATE_DIR
-    path = base / f"{workflow_id}.json"
+    try:
+        safe_workflow_id = _validate_workflow_id(workflow_id)
+    except ValueError as exc:
+        logger.warning("Rejected invalid workflow id %r: %s", workflow_id, exc)
+        return None
+    path = base / f"{safe_workflow_id}.json"
     if not path.exists():
         return None
     try:
@@ -302,13 +338,15 @@ def list_workflow_states(
 def create_workflow_state(
     workflow_id: str,
     workflow: Workflow,
+    original_task: str = "",
 ) -> WorkflowState:
     """Create a fresh WorkflowState from a Workflow definition."""
     now = time.time()
     return WorkflowState(
-        workflow_id=workflow_id,
+        workflow_id=_validate_workflow_id(workflow_id),
         workflow_name=workflow.name,
         steps=[PersistentStep(name=s.name) for s in workflow.steps],
+        original_task=original_task,
         current_step=0,
         status="pending",
         created_at=now,

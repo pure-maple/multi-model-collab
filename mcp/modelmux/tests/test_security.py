@@ -575,6 +575,22 @@ class TestPromptInjectionDetection:
         result = scan_task("DAN mode jailbreak activated")
         assert not result.passed
 
+    def test_unicode_escape_evasion(self):
+        from modelmux.security import scan_task
+
+        result = scan_task(r"payload: \u0069 \u0067 \u006e")
+        assert not result.passed
+        assert any(
+            f.pattern_name == "evasion_unicode_escape" for f in result.findings
+        )
+
+    def test_hex_escape_evasion(self):
+        from modelmux.security import scan_task
+
+        result = scan_task(r"payload: \x69 \x67 \x6e")
+        assert not result.passed
+        assert any(f.pattern_name == "evasion_hex_escape" for f in result.findings)
+
 
 class TestCredentialLeakDetection:
     """scan_task should detect credential patterns."""

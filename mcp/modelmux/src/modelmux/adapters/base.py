@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import queue
@@ -250,7 +251,6 @@ class BaseAdapter:
 
         lines: list[str] = []
         exit_code = 0
-        line_count = 0
         try:
             gen = stream_subprocess(
                 cmd,
@@ -268,9 +268,11 @@ class BaseAdapter:
                     exit_code = e.value if e.value is not None else 0
                     break
                 lines.append(line)
-                line_count += 1
                 if on_progress:
                     on_progress(line)
+                # Yield so long-running CLI output collection does not monopolize
+                # the event loop in async dispatch mode.
+                await asyncio.sleep(0)
         except FileNotFoundError as e:
             return AdapterResult(
                 run_id=run_id,

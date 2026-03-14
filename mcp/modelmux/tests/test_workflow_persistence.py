@@ -93,7 +93,11 @@ class TestWorkflowStatePersistence:
     """Test workflow state persistence to disk (write + read roundtrip)."""
 
     def test_save_and_load_roundtrip(self, state_dir, sample_workflow):
-        state = create_workflow_state("wf-001", sample_workflow)
+        state = create_workflow_state(
+            "wf-001",
+            sample_workflow,
+            original_task="review this change",
+        )
         state.status = "running"
         state.steps[0].state = StepState.COMPLETED
         state.steps[0].result = {"output": "result_a", "status": "success"}
@@ -105,6 +109,7 @@ class TestWorkflowStatePersistence:
         assert loaded is not None
         assert loaded.workflow_id == "wf-001"
         assert loaded.workflow_name == "test-pipeline"
+        assert loaded.original_task == "review this change"
         assert loaded.status == "running"
         assert len(loaded.steps) == 3
         assert loaded.steps[0].state == StepState.COMPLETED
@@ -123,6 +128,15 @@ class TestWorkflowStatePersistence:
         assert path.exists()
         assert nested.exists()
 
+    def test_save_rejects_path_traversal_workflow_id(self, state_dir):
+        state = WorkflowState(
+            workflow_id="../wf-escape",
+            workflow_name="test",
+            steps=[PersistentStep(name="s1")],
+        )
+        with pytest.raises(ValueError):
+            save_workflow_state(state, state_dir=state_dir)
+
     def test_save_overwrites_existing(self, state_dir, sample_workflow):
         state = create_workflow_state("wf-overwrite", sample_workflow)
         save_workflow_state(state, state_dir=state_dir)
@@ -138,6 +152,10 @@ class TestWorkflowStatePersistence:
 
     def test_load_nonexistent_returns_none(self, state_dir):
         result = load_workflow_state("does-not-exist", state_dir=state_dir)
+        assert result is None
+
+    def test_load_rejects_path_traversal_workflow_id(self, state_dir):
+        result = load_workflow_state("../escape", state_dir=state_dir)
         assert result is None
 
     def test_load_corrupt_file_returns_none(self, state_dir):
@@ -241,6 +259,7 @@ class TestFreshWorkflowNoPersistedState:
         state = create_workflow_state("fresh-01", sample_workflow)
         assert state.workflow_id == "fresh-01"
         assert state.workflow_name == "test-pipeline"
+        assert state.original_task == ""
         assert state.status == "pending"
         assert state.current_step == 0
         assert state.created_at > 0
@@ -249,6 +268,14 @@ class TestFreshWorkflowNoPersistedState:
             assert s.state == StepState.PENDING
             assert s.result is None
             assert s.error is None
+
+    def test_create_workflow_state_preserves_original_task(self, sample_workflow):
+        state = create_workflow_state(
+            "fresh-02",
+            sample_workflow,
+            original_task="ship the patch",
+        )
+        assert state.original_task == "ship the patch"
 
 
 class TestListWorkflows:

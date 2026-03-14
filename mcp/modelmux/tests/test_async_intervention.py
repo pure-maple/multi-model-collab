@@ -404,6 +404,116 @@ class TestPauseResume:
             srv._async_tasks.pop(run_id, None)
             srv._pause_events.pop(run_id, None)
 
+    @pytest.mark.asyncio
+    async def test_cancelled_background_task_re_raises_cancelled_error(self):
+        import modelmux.server as srv
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        adapter = SlowAdapter()
+        patches = _standard_patches(adapter)
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+            patches[8],
+            patch("modelmux.server.write_status"),
+            patch("modelmux.server.remove_status"),
+        ):
+            result = await mux_dispatch(
+                provider="fake",
+                task="cancel test",
+                ctx=ctx,
+                async_mode=True,
+            )
+            run_id = json.loads(result)["run_id"]
+            bg_task = srv._async_tasks[run_id]
+            bg_task.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await bg_task
+
+        srv._async_tasks.pop(run_id, None)
+        srv._pause_events.pop(run_id, None)
+
+    @pytest.mark.asyncio
+    async def test_pause_after_dispatch_does_not_block_result_commit(self):
+        import modelmux.server as srv
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        run_id_holder = {}
+        status_writes = {}
+
+        class PauseOnReturnAdapter(FakeAdapter):
+            async def run(self, prompt="", **kw):
+                while "id" not in run_id_holder:
+                    await asyncio.sleep(0)
+                run_id = run_id_holder["id"]
+                while run_id not in srv._pause_events:
+                    await asyncio.sleep(0)
+                srv._pause_events[run_id].clear()
+                return AdapterResult(
+                    provider=self.provider_name,
+                    status="success",
+                    output="finished",
+                    summary="finished",
+                    duration_seconds=0.1,
+                )
+
+        adapter = PauseOnReturnAdapter()
+        patches = _standard_patches(adapter)
+
+        def capture_write(status):
+            run_id_holder.setdefault("id", status.run_id)
+            status_writes[status.run_id] = DispatchStatus(
+                run_id=status.run_id,
+                provider=status.provider,
+                status=status.status,
+                async_mode=status.async_mode,
+                paused=status.paused,
+                result=status.result,
+            )
+
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+            patches[8],
+            patch("modelmux.server.write_status", side_effect=capture_write),
+            patch("modelmux.server.remove_status"),
+        ):
+            result = await mux_dispatch(
+                provider="fake",
+                task="pause after dispatch",
+                ctx=ctx,
+                async_mode=True,
+            )
+            run_id = json.loads(result)["run_id"]
+
+            for _ in range(50):
+                written = status_writes.get(run_id)
+                if written and written.result is not None:
+                    break
+                await asyncio.sleep(0.01)
+
+        written = status_writes.get(run_id)
+        assert written is not None
+        assert written.status == "success"
+        assert written.result is not None
+        assert run_id not in srv._async_tasks
+
 
 class TestTaskList:
     """Test mux_task_list tool."""

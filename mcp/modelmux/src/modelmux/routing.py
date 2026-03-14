@@ -170,7 +170,16 @@ _INTENT_KEYWORDS: dict[IntentCategory, tuple[list[str], list[str]]] = {
         ["check", "examine", "look at", "code review", "pr review", "pull request"],
     ),
     IntentCategory.ANALYSIS: (
-        ["analyze", "explain", "investigate", "understand", "trace", "profile"],
+        [
+            "analyze",
+            "explain",
+            "investigate",
+            "understand",
+            "trace",
+            "profile",
+            "solve",
+            "why",
+        ],
         [
             "why does",
             "how does",
@@ -179,6 +188,7 @@ _INTENT_KEYWORDS: dict[IntentCategory, tuple[list[str], list[str]]] = {
             "deep dive",
             "break down",
             "walk through",
+            "puzzle",
         ],
     ),
     IntentCategory.DEBUG: (
@@ -197,11 +207,27 @@ _INTENT_KEYWORDS: dict[IntentCategory, tuple[list[str], list[str]]] = {
         ],
     ),
     IntentCategory.DOCS: (
-        ["document", "readme", "docstring", "changelog", "api docs", "wiki"],
-        ["comment", "jsdoc", "typedoc", "description", "annotation", "documentation"],
+        [
+            "document",
+            "readme",
+            "docstring",
+            "changelog",
+            "api docs",
+            "wiki",
+            "translate",
+            "summarize",
+        ],
+        [
+            "comment",
+            "jsdoc",
+            "typedoc",
+            "description",
+            "annotation",
+            "documentation",
+        ],
     ),
     IntentCategory.RESEARCH: (
-        ["research", "compare", "explore", "benchmark"],
+        ["research", "compare", "explore", "benchmark", "trade-off", "trade off"],
         [
             "alternatives",
             "options",

@@ -599,6 +599,7 @@ async def mux_dispatch(
     base_provider, spec_model = _parse_provider_spec(provider)
     if spec_model and not model:
         model = spec_model
+    original_task = task
 
     # Auto-route if needed
     actual_provider = base_provider
@@ -619,9 +620,10 @@ async def mux_dispatch(
         # Override provider when auto-routed and binding specifies preferred_model
         if base_provider == "auto" and _binding.preferred_model:
             bp, bm = _parse_provider_spec(_binding.preferred_model)
-            actual_provider = bp
-            if bm and not model:
-                model = bm
+            if bp not in excluded:
+                actual_provider = bp
+                if bm and not model:
+                    model = bm
         # Prepend prompt template to task
         if _binding.prompt_template:
             task = f"[System: {_binding.prompt_template}]\n\n{task}"
@@ -679,23 +681,25 @@ async def mux_dispatch(
                 "run_id": "",
                 "provider": actual_provider,
                 "status": "blocked",
+                "task_summary": original_task[:100],
                 "error": f"Policy denied: {policy_result.reason}",
             },
             indent=2,
         )
 
     # Security scan — detect prompt injection and credential leaks
-    security_result = scan_task(task, policy_overrides=policy.security)
+    security_result = scan_task(original_task, policy_overrides=policy.security)
     if not security_result.passed:
         from modelmux.audit import log_security_event
 
-        log_security_event(security_result, task_summary=task[:100])
+        log_security_event(security_result, task_summary=original_task[:100])
         if security_result.action == ThreatLevel.BLOCK:
             return json.dumps(
                 {
                     "run_id": "",
                     "provider": actual_provider,
                     "status": "blocked",
+                    "task_summary": original_task[:100],
                     "error": (
                         f"Security check failed: {security_result.findings[0].category}"
                     ),
@@ -713,7 +717,7 @@ async def mux_dispatch(
         # WARN or LOG_ONLY level — log but continue
         from modelmux.audit import log_security_event
 
-        log_security_event(security_result, task_summary=task[:100])
+        log_security_event(security_result, task_summary=original_task[:100])
 
     adapter = _get_adapter(actual_provider)
 
@@ -769,6 +773,8 @@ async def mux_dispatch(
     extra_args, env_overrides = _build_extra_args(
         actual_provider, model, profile, reasoning_effort, active_prof
     )
+    extra_args = extra_args or {}
+    env_overrides = env_overrides or {}
 
     # Merge binding parameters into extra_args (binding values lose to explicit)
     if _binding and _binding.parameters:
@@ -952,7 +958,6 @@ async def mux_dispatch(
         # Create pause event (set = running, cleared = paused)
         pause_event = asyncio.Event()
         pause_event.set()  # start in running state
-        _pause_events[run_id] = pause_event
 
         async def _run_async_wrapper() -> None:
             """Background wrapper: runs dispatch, stores result in status."""
@@ -960,8 +965,6 @@ async def mux_dispatch(
                 # Check pause event before starting dispatch
                 await pause_event.wait()
                 result_json = await _run_dispatch_core()
-                # Check pause event after dispatch completes
-                await pause_event.wait()
                 result_dict = json.loads(result_json)
                 dispatch_status.status = result_dict.get("status", "success")
                 dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
@@ -973,6 +976,7 @@ async def mux_dispatch(
                 dispatch_status.elapsed_seconds = round(time.time() - start_time, 1)
                 dispatch_status.paused = False
                 write_status(dispatch_status)
+                raise
             except Exception as exc:
                 dispatch_status.status = "error"
                 dispatch_status.error = str(exc)[:500]
@@ -985,6 +989,7 @@ async def mux_dispatch(
 
         bg_task = asyncio.create_task(_run_async_wrapper())
         _async_tasks[run_id] = bg_task
+        _pause_events[run_id] = pause_event
 
         return json.dumps(
             {
@@ -1857,6 +1862,7 @@ async def mux_workflow(
         )
         wf_state = persisted_state
         wf_state.status = "running"
+        task = wf_state.original_task or task
         start_step = resume_idx
     else:
         wf = all_workflows.get(workflow)
@@ -1871,7 +1877,7 @@ async def mux_workflow(
             )
         # Create persistent state for the new workflow
         wf_id = str(uuid.uuid4())[:8]
-        wf_state = create_workflow_state(wf_id, wf)
+        wf_state = create_workflow_state(wf_id, wf, original_task=task)
         wf_state.status = "running"
         start_step = 0
 
@@ -1954,8 +1960,7 @@ async def mux_workflow(
                     "error": f"{provider} CLI not available",
                 }
             )
-            context[step.name] = f"[ERROR: {provider} not available]"
-            continue
+            break
 
         run_id = str(uuid.uuid4())[:8]
         start_time = time.time()
@@ -2050,6 +2055,8 @@ async def mux_workflow(
                 error=result.error,
             )
         )
+        if result.status != "success":
+            break
 
     # Determine final status
     all_ok = all(

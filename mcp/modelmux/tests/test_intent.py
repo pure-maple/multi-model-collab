@@ -42,6 +42,16 @@ def test_docs():
     assert result.primary == IntentCategory.DOCS
 
 
+def test_docs_translate():
+    result = classify_intent("translate this release note into Chinese")
+    assert result.primary == IntentCategory.DOCS
+
+
+def test_docs_summarize():
+    result = classify_intent("summarize this incident report")
+    assert result.primary == IntentCategory.DOCS
+
+
 def test_research():
     result = classify_intent("research alternatives to Redis for caching, compare pros and cons")
     assert result.primary == IntentCategory.RESEARCH
@@ -138,6 +148,11 @@ def test_classify_task_backward_compat_analysis():
 
 def test_classify_task_backward_compat_reasoning():
     result = classify_task("explain why this algorithm is O(n log n)")
+    assert result == "reasoning"
+
+
+def test_classify_task_backward_compat_reasoning_solve():
+    result = classify_task("solve this puzzle and explain your logic")
     assert result == "reasoning"
 
 

@@ -196,6 +196,221 @@ class TestMuxDispatch:
             assert "rate limited" in data["error"]
 
     @pytest.mark.asyncio
+    async def test_dispatch_security_scan_uses_original_task(self):
+        from modelmux.routing import IntentCategory, IntentResult
+        from modelmux.security import SecurityFinding, SecurityResult, ThreatLevel
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        security_result = SecurityResult(
+            passed=False,
+            findings=[
+                SecurityFinding(
+                    category="prompt_injection",
+                    pattern_name="role_override_system_colon",
+                    severity=ThreatLevel.BLOCK,
+                    matched_text="system:",
+                )
+            ],
+            action=ThreatLevel.BLOCK,
+        )
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_config") as mock_config,
+            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
+            patch("modelmux.server._get_adapter", return_value=FakeAdapter()),
+            patch("modelmux.server.get_category_binding") as mock_binding,
+            patch("modelmux.server.classify_intent") as mock_classify,
+            patch("modelmux.server.load_policy") as mock_policy,
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.scan_task", return_value=security_result) as mock_scan,
+            patch("modelmux.audit.log_security_event") as mock_log_security_event,
+        ):
+            mock_config.return_value = MagicMock(
+                active_profile="default",
+                profiles={"default": MagicMock(auto_prompt_append=True)},
+                disabled_providers=[],
+                routing_rules=[],
+                default_provider="codex",
+                auto_exclude_caller=True,
+                caller_override="",
+            )
+            from modelmux.detect import CallerInfo
+
+            mock_detect.return_value = (
+                CallerInfo(client_name="test", provider="", platform=""),
+                [],
+            )
+            mock_binding.return_value = MagicMock(
+                preferred_model="",
+                prompt_template="Use strict review mode.",
+                parameters={},
+            )
+            mock_classify.return_value = IntentResult(
+                primary=IntentCategory.REVIEW,
+                confidence=0.9,
+                signals=["+review"],
+            )
+            mock_policy.return_value = MagicMock(security={})
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_dispatch(
+                provider="codex",
+                task="review src/main.py",
+                ctx=ctx,
+            )
+
+        data = json.loads(result)
+        assert data["status"] == "blocked"
+        assert data["task_summary"] == "review src/main.py"
+        mock_scan.assert_called_once_with("review src/main.py", policy_overrides={})
+        assert mock_log_security_event.call_args.kwargs["task_summary"] == "review src/main.py"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_binding_skips_excluded_provider_override(self):
+        from modelmux.routing import IntentCategory, IntentResult
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        gemini = FakeAdapter(output="gemini result")
+        gemini.provider_name = "gemini"
+        codex = FakeAdapter(output="codex result")
+        codex.provider_name = "codex"
+
+        def get_adapter(name):
+            return {"gemini": gemini, "codex": codex}[name]
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_config") as mock_config,
+            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
+            patch("modelmux.server._get_adapter", side_effect=get_adapter),
+            patch(
+                "modelmux.server.get_all_adapters",
+                return_value={"gemini": gemini, "codex": codex},
+            ),
+            patch("modelmux.server._auto_route", return_value="gemini"),
+            patch("modelmux.server.get_category_binding") as mock_binding,
+            patch("modelmux.server.classify_intent") as mock_classify,
+            patch("modelmux.server.load_policy"),
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.write_status"),
+            patch("modelmux.server.remove_status"),
+            patch("modelmux.server.log_dispatch"),
+            patch("modelmux.server.log_result"),
+        ):
+            mock_config.return_value = MagicMock(
+                active_profile="default",
+                profiles={"default": MagicMock(auto_prompt_append=True)},
+                disabled_providers=[],
+                routing_rules=[],
+                default_provider="codex",
+                auto_exclude_caller=True,
+                caller_override="",
+            )
+            from modelmux.detect import CallerInfo
+
+            mock_detect.return_value = (
+                CallerInfo(client_name="test", provider="", platform=""),
+                ["codex"],
+            )
+            mock_binding.return_value = MagicMock(
+                preferred_model="codex/o3-pro",
+                prompt_template="",
+                parameters={},
+            )
+            mock_classify.return_value = IntentResult(
+                primary=IntentCategory.REVIEW,
+                confidence=0.9,
+                signals=["+review"],
+            )
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_dispatch(
+                provider="auto",
+                task="review this diff",
+                ctx=ctx,
+            )
+
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert data["provider"] == "gemini"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_binding_merge_handles_none_extra_args(self):
+        from modelmux.routing import IntentCategory, IntentResult
+        from modelmux.server import mux_dispatch
+
+        ctx = FakeContext()
+        adapter = MagicMock()
+        adapter.check_available.return_value = True
+        adapter.run = AsyncMock(
+            return_value=AdapterResult(
+                provider="codex",
+                status="success",
+                output="ok",
+                summary="ok",
+                duration_seconds=0.1,
+            )
+        )
+
+        with (
+            patch("modelmux.server._ensure_custom_providers_loaded"),
+            patch("modelmux.server.load_config") as mock_config,
+            patch("modelmux.server._detect_and_build_exclusions") as mock_detect,
+            patch("modelmux.server._get_adapter", return_value=adapter),
+            patch("modelmux.server.get_category_binding") as mock_binding,
+            patch("modelmux.server.classify_intent") as mock_classify,
+            patch("modelmux.server._build_extra_args", return_value=(None, None)),
+            patch("modelmux.server.load_policy"),
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.write_status"),
+            patch("modelmux.server.remove_status"),
+            patch("modelmux.server.log_dispatch"),
+            patch("modelmux.server.log_result"),
+        ):
+            mock_config.return_value = MagicMock(
+                active_profile="default",
+                profiles={"default": MagicMock(auto_prompt_append=True)},
+                disabled_providers=[],
+                routing_rules=[],
+                default_provider="codex",
+                auto_exclude_caller=True,
+                caller_override="",
+            )
+            from modelmux.detect import CallerInfo
+
+            mock_detect.return_value = (
+                CallerInfo(client_name="test", provider="", platform=""),
+                [],
+            )
+            mock_binding.return_value = MagicMock(
+                preferred_model="",
+                prompt_template="",
+                parameters={"temperature": 0.2},
+            )
+            mock_classify.return_value = IntentResult(
+                primary=IntentCategory.REVIEW,
+                confidence=0.9,
+                signals=["+review"],
+            )
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_dispatch(
+                provider="codex",
+                task="review this diff",
+                ctx=ctx,
+            )
+
+        data = json.loads(result)
+        assert data["status"] == "success"
+        assert adapter.run.await_args.kwargs["extra_args"] == {"temperature": 0.2}
+
+    @pytest.mark.asyncio
     async def test_dispatch_cli_not_found_fallback(self):
         from modelmux.server import mux_dispatch
 
@@ -1401,6 +1616,7 @@ class TestMuxWorkflow:
             patch("modelmux.server.count_recent", return_value=0),
             patch("modelmux.server.write_status"),
             patch("modelmux.server.remove_status"),
+            patch("modelmux.server.save_workflow_state"),
             patch("modelmux.server.log_dispatch"),
             patch("modelmux.server.log_result"),
         ):
@@ -1416,6 +1632,121 @@ class TestMuxWorkflow:
             assert data["workflow"] == "review"
             assert "steps" in data
             assert "summary" in data
+
+    @pytest.mark.asyncio
+    async def test_workflow_stops_after_failed_step(self):
+        from modelmux.server import mux_workflow
+
+        ctx = FakeContext()
+        failing = MagicMock()
+        failing.check_available.return_value = True
+        failing.run = AsyncMock(
+            return_value=AdapterResult(
+                provider="codex",
+                status="error",
+                output="boom",
+                summary="boom",
+                duration_seconds=0.2,
+                error="boom",
+            )
+        )
+        skipped = MagicMock()
+        skipped.check_available.return_value = True
+        skipped.run = AsyncMock()
+
+        def get_adapter(name):
+            return failing if name == "codex" else skipped
+
+        with (
+            patch("modelmux.config._find_config_file", return_value=None),
+            patch("modelmux.server._get_adapter", side_effect=get_adapter),
+            patch("modelmux.server.load_policy") as mock_policy,
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.write_status"),
+            patch("modelmux.server.remove_status"),
+            patch("modelmux.server.save_workflow_state"),
+            patch("modelmux.server.log_dispatch"),
+            patch("modelmux.server.log_result"),
+        ):
+            mock_policy.return_value = MagicMock()
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_workflow(
+                workflow="review",
+                task="review my code",
+                ctx=ctx,
+            )
+
+        data = json.loads(result)
+        assert data["summary"]["total_steps"] == 1
+        assert data["steps"][0]["status"] == "error"
+        assert data["summary"]["resumable"] is True
+        skipped.run.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_workflow_resume_uses_persisted_original_task(self):
+        from modelmux.server import mux_workflow
+        from modelmux.workflow import PersistentStep, WorkflowState
+
+        ctx = FakeContext()
+        adapter = MagicMock()
+        adapter.check_available.return_value = True
+        adapter.run = AsyncMock(
+            side_effect=[
+                AdapterResult(
+                    provider="codex",
+                    status="success",
+                    output="implemented",
+                    summary="implemented",
+                    duration_seconds=0.1,
+                ),
+                AdapterResult(
+                    provider="claude",
+                    status="success",
+                    output="reviewed",
+                    summary="reviewed",
+                    duration_seconds=0.1,
+                ),
+            ]
+        )
+        persisted = WorkflowState(
+            workflow_id="wf_resume",
+            workflow_name="review",
+            steps=[
+                PersistentStep(name="implement"),
+                PersistentStep(name="review"),
+            ],
+            original_task="stored task from state",
+            status="failed",
+        )
+
+        with (
+            patch("modelmux.config._find_config_file", return_value=None),
+            patch("modelmux.server.load_workflow_state", return_value=persisted),
+            patch("modelmux.server._get_adapter", return_value=adapter),
+            patch("modelmux.server.load_policy") as mock_policy,
+            patch("modelmux.server.check_policy") as mock_check,
+            patch("modelmux.server.count_recent", return_value=0),
+            patch("modelmux.server.write_status"),
+            patch("modelmux.server.remove_status"),
+            patch("modelmux.server.save_workflow_state"),
+            patch("modelmux.server.log_dispatch"),
+            patch("modelmux.server.log_result"),
+        ):
+            mock_policy.return_value = MagicMock()
+            mock_check.return_value = MagicMock(allowed=True)
+
+            result = await mux_workflow(
+                workflow="review",
+                task="caller provided task",
+                ctx=ctx,
+                resume_id="wf_resume",
+            )
+
+        data = json.loads(result)
+        assert data["summary"]["total_steps"] == 2
+        assert adapter.run.await_args_list[0].kwargs["prompt"] == "stored task from state"
 
 
 # --- mux_collaborate tests ---
